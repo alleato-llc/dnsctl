@@ -18,6 +18,7 @@ type recordingRunner struct {
 	lastWrite []byte
 }
 
+func (r *recordingRunner) Ping() error                   { return nil }
 func (r *recordingRunner) SetDNS(string, []string) error { return nil }
 func (r *recordingRunner) ClearDNS(string) error         { return nil }
 func (r *recordingRunner) FlushDNS() error               { r.flushed++; return nil }

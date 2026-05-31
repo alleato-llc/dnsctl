@@ -141,6 +141,21 @@ func (d *Document) List() []Entry {
 	return append(make([]Entry, 0, len(d.entries)), d.entries...)
 }
 
+// Unmanaged returns the host entries that live outside the dnsctl-managed block
+// (system entries like localhost, and any hand-added lines). These are
+// read-only — dnsctl never edits them. The result is always non-nil.
+func (d *Document) Unmanaged() []Entry {
+	entries := make([]Entry, 0)
+	for _, block := range []string{d.head, d.tail} {
+		for _, line := range strings.Split(block, "\n") {
+			if e, ok := parseEntryLine(line); ok {
+				entries = append(entries, e)
+			}
+		}
+	}
+	return entries
+}
+
 // Get returns the managed entry for a hostname (case-insensitive).
 func (d *Document) Get(hostname string) (Entry, bool) {
 	if i := d.indexOf(hostname); i >= 0 {

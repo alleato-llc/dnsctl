@@ -9,8 +9,10 @@ import {
   DNSStatus,
   Backend,
   ListHosts,
+  ListSystemHosts,
   AddHost,
   RemoveHost,
+  HelperStatus,
 } from "../wailsjs/go/guiapi/App";
 import { hosts } from "../wailsjs/go/models";
 
@@ -71,6 +73,44 @@ function applyFont(font: Font): void {
 // Apply before rendering to avoid a flash of the wrong palette/font.
 applyTheme(getTheme());
 applyFont(getFont());
+
+// --- Boolean preferences ---
+
+const CONFIRM_KEY = "dnsctl.confirmRemove";
+const SHOWSYS_KEY = "dnsctl.showSystem";
+
+const getConfirmRemove = (): boolean => localStorage.getItem(CONFIRM_KEY) !== "false"; // default on
+const setConfirmRemove = (v: boolean): void => localStorage.setItem(CONFIRM_KEY, String(v));
+const getShowSystem = (): boolean => localStorage.getItem(SHOWSYS_KEY) === "true"; // default off
+const setShowSystem = (v: boolean): void => localStorage.setItem(SHOWSYS_KEY, String(v));
+
+// confirmDialog shows an in-app modal (window.confirm isn't reliable in the
+// webview) and resolves true if the user confirms.
+function confirmDialog(title: string, message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>${title}</h2>
+        <p>${message}</p>
+        <div class="modal-actions">
+          <button class="btn" data-act="cancel">Cancel</button>
+          <button class="btn destructive" data-act="ok">Remove</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = (v: boolean) => {
+      overlay.remove();
+      resolve(v);
+    };
+    overlay.querySelector('[data-act="cancel"]')!.addEventListener("click", () => close(false));
+    overlay.querySelector('[data-act="ok"]')!.addEventListener("click", () => close(true));
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close(false);
+    });
+  });
+}
 
 const GEAR_SVG = `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 5a3 3 0 100 6 3 3 0 000-6zm0 1.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3z"/><path d="M6.94 1.5a.9.9 0 01.9-.75h.32a.9.9 0 01.9.75l.12.74a4.6 4.6 0 011.06.61l.7-.28a.9.9 0 011.1.39l.16.28a.9.9 0 01-.2 1.15l-.58.47c.05.36.05.72 0 1.08l.58.47a.9.9 0 01.2 1.15l-.16.28a.9.9 0 01-1.1.39l-.7-.28c-.33.26-.69.46-1.06.61l-.12.74a.9.9 0 01-.9.75h-.32a.9.9 0 01-.9-.75l-.12-.74a4.6 4.6 0 01-1.06-.61l-.7.28a.9.9 0 01-1.1-.39l-.16-.28a.9.9 0 01.2-1.15l.58-.47a4.7 4.7 0 010-1.08l-.58-.47a.9.9 0 01-.2-1.15l.16-.28a.9.9 0 011.1-.39l.7.28c.33-.26.69-.46 1.06-.61l.12-.74z"/></svg>`;
 
@@ -145,9 +185,36 @@ async function renderHosts(): Promise<void> {
       <button class="btn primary" id="h-add">Add</button>
     </div>
     <p class="error" id="h-error"></p>
-    <div class="card" id="h-list"></div>`;
+    <div class="card" id="h-list"></div>
+    <div id="sys-section"></div>`;
   document.querySelector<HTMLButtonElement>("#h-add")!.addEventListener("click", () => void addHost());
   await refreshHosts();
+  await renderSystemSection();
+}
+
+// renderSystemSection shows the read-only, unmanaged /etc/hosts entries when
+// the "Show system entries" preference is on.
+async function renderSystemSection(): Promise<void> {
+  const el = document.querySelector<HTMLDivElement>("#sys-section");
+  if (!el) return;
+  if (!getShowSystem()) {
+    el.innerHTML = "";
+    return;
+  }
+  const sys = await ListSystemHosts();
+  const rows = sys
+    .map(
+      (e) => `
+      <div class="row">
+        <span class="primary mono">${escapeHtml(e.hostname)}</span>
+        <span class="secondary mono">${escapeHtml(e.ip)}</span>
+        <span class="spacer"></span>
+      </div>`
+    )
+    .join("");
+  el.innerHTML = `
+    <p class="subtitle" style="margin-top: 24px;">System entries (read-only)</p>
+    <div class="card">${rows || `<div class="empty">No system entries.</div>`}</div>`;
 }
 
 async function refreshHosts(): Promise<void> {
@@ -170,6 +237,10 @@ async function refreshHosts(): Promise<void> {
     btn.className = "btn danger";
     btn.textContent = "Remove";
     btn.addEventListener("click", async () => {
+      if (getConfirmRemove()) {
+        const ok = await confirmDialog("Remove entry", `Remove the managed entry for ${e.hostname}?`);
+        if (!ok) return;
+      }
       await RemoveHost(e.hostname);
       await refreshHosts();
     });
@@ -202,6 +273,9 @@ function renderSettings(): void {
   const currentTheme = getTheme();
   const currentFont = getFont();
 
+  const toggle = (id: string, checked: boolean) =>
+    `<label class="switch"><input type="checkbox" id="${id}" ${checked ? "checked" : ""}><span class="slider"></span></label>`;
+
   const themeOpt = (value: Theme, label: string) =>
     `<button data-theme="${value}" class="${value === currentTheme ? "active" : ""}">${label}</button>`;
 
@@ -231,6 +305,33 @@ function renderSettings(): void {
           ${fontTile("system", "System")}${fontTile("rounded", "Rounded")}${fontTile("mono", "Mono")}
         </div>
       </div>
+    </div>
+
+    <p class="subtitle" style="margin-top: 20px;">Hosts</p>
+    <div class="card">
+      <div class="row">
+        <span class="primary">Show system entries</span>
+        <span class="secondary">Display the read-only /etc/hosts lines dnsctl doesn't manage</span>
+        <span class="spacer"></span>
+        ${toggle("opt-showsys", getShowSystem())}
+      </div>
+      <div class="row">
+        <span class="primary">Confirm before removing</span>
+        <span class="secondary">Ask before deleting a managed entry</span>
+        <span class="spacer"></span>
+        ${toggle("opt-confirm", getConfirmRemove())}
+      </div>
+    </div>
+
+    <p class="subtitle" style="margin-top: 20px;">Helper</p>
+    <div class="card">
+      <div class="row">
+        <span class="primary">dnsctl-helper</span>
+        <span class="secondary">Performs privileged DNS / hosts changes</span>
+        <span class="spacer"></span>
+        <span id="helper-status"><span class="badge">Checking…</span></span>
+      </div>
+      <div id="helper-detail"></div>
     </div>`;
 
   const seg = document.querySelector<HTMLDivElement>("#theme-seg")!;
@@ -248,6 +349,32 @@ function renderSettings(): void {
       grid.querySelectorAll(".font-tile").forEach((t) => t.classList.toggle("active", t === tile));
     });
   });
+
+  document
+    .querySelector<HTMLInputElement>("#opt-showsys")!
+    .addEventListener("change", (e) => setShowSystem((e.target as HTMLInputElement).checked));
+  document
+    .querySelector<HTMLInputElement>("#opt-confirm")!
+    .addEventListener("change", (e) => setConfirmRemove((e.target as HTMLInputElement).checked));
+
+  void refreshHelperStatus();
+}
+
+// refreshHelperStatus probes the helper and fills the Settings diagnostics row.
+async function refreshHelperStatus(): Promise<void> {
+  const statusEl = document.querySelector<HTMLSpanElement>("#helper-status");
+  const detailEl = document.querySelector<HTMLDivElement>("#helper-detail");
+  if (!statusEl || !detailEl) return;
+  const st = await HelperStatus();
+  if (st.reachable) {
+    statusEl.innerHTML = `<span class="badge active">Connected</span>`;
+    detailEl.innerHTML = "";
+    return;
+  }
+  statusEl.innerHTML = `<span class="badge danger-badge">Not reachable</span>`;
+  detailEl.innerHTML = `
+    <div class="row"><span class="secondary">${escapeHtml(st.detail)}</span></div>
+    <div class="row"><span class="secondary">Install it from the repo:&nbsp;<span class="mono">sudo make install-helper</span></span></div>`;
 }
 
 setView("dns");

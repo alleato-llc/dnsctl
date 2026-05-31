@@ -120,6 +120,10 @@ func (h *handler) authorize(conn net.Conn) error {
 // point for the trust boundary.
 func (h *handler) dispatch(req ipc.Request) error {
 	switch req.Op {
+	case ipc.OpPing:
+		// Reaching here means the peer was authorized; nothing else to do.
+		return nil
+
 	case ipc.OpSetDNS:
 		if err := validateIPs(req.Servers); err != nil {
 			return err

@@ -86,11 +86,14 @@ config, flagging the active/default service), `Backend`, `ListServices`,
 System-Settings-style sidebar with three views: **DNS Status** (read-only;
 shows each service's servers or "Automatic (DHCP)" and an "Active" badge on the
 default-route service — dnsctl never modifies resolver config here), **Hosts**
-(the managed-entry editor), and **Settings** (gear icon; appearance Light/Dark/
-System and font System/Rounded/Mono). Theme and font are frontend-only
-preferences — `localStorage` + `data-theme`/`data-font` attributes the
-stylesheet responds to (no Go binding). After adding an `App` method, re-run
-`wails generate module` to refresh the TypeScript bindings.
+(the managed-entry editor), and **Settings** (gear icon). Settings has:
+appearance (Light/Dark/System) and font (System/Rounded/Mono) — frontend-only
+prefs via `localStorage` + `data-theme`/`data-font`; host options ("show system
+entries" backed by `App.ListSystemHosts()`, "confirm before removing"); and a
+**helper status** row backed by `App.HelperStatus()` →
+`PrivilegedRunner.Ping()` (the helper answers `ipc.OpPing` after authorizing the
+peer). After adding an `App` method, re-run `wails generate module` to refresh
+the TypeScript bindings.
 
 ### Entry point / command layer
 

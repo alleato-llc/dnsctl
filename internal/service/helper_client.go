@@ -54,6 +54,11 @@ func (h *HelperClient) call(req ipc.Request) error {
 	return nil
 }
 
+// Ping checks that the helper is reachable and authorizes this client.
+func (h *HelperClient) Ping() error {
+	return h.call(ipc.Request{Op: ipc.OpPing})
+}
+
 func (h *HelperClient) SetDNS(service string, servers []string) error {
 	return h.call(ipc.Request{Op: ipc.OpSetDNS, Service: service, Servers: servers})
 }

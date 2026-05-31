@@ -53,6 +53,16 @@ func (s *HostsService) List() ([]hosts.Entry, error) {
 	return doc.List(), nil
 }
 
+// ListUnmanaged returns the read-only host entries outside dnsctl's managed
+// block (system entries, hand-added lines).
+func (s *HostsService) ListUnmanaged() ([]hosts.Entry, error) {
+	doc, err := s.store.Load()
+	if err != nil {
+		return nil, err
+	}
+	return doc.Unmanaged(), nil
+}
+
 // Get returns the managed entry for a hostname, if present.
 func (s *HostsService) Get(hostname string) (hosts.Entry, bool, error) {
 	doc, err := s.store.Load()

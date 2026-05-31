@@ -24,13 +24,18 @@ A System Settings-style sidebar with:
   resolver config here.
 - **Hosts** — add / view / remove the dnsctl-managed `/etc/hosts` entries.
   Backed by `App.ListHosts/AddHost/RemoveHost`.
-- **Settings** (gear icon) — appearance (Light / Dark / System) and font
-  (System / Rounded / Mono, shown as live preview tiles). Frontend-only
-  preferences in `localStorage` (no Go binding): theme sets a `data-theme`
-  attribute the palette responds to ("System" follows the OS via
-  `prefers-color-scheme`), and font sets `data-font`, which drives the
-  `--ui-font` variable. Rounded/Mono use the OS `ui-rounded`/`ui-monospace`
-  fonts, so nothing is bundled.
+- **Settings** (gear icon):
+  - *Appearance* — Light / Dark / System. Frontend-only (`localStorage` +
+    `data-theme`); "System" follows the OS via `prefers-color-scheme`.
+  - *Font* — System / Rounded / Mono, shown as live preview tiles. Frontend-only
+    (`localStorage` + `data-font` → the `--ui-font` variable). Rounded/Mono use
+    the OS `ui-rounded`/`ui-monospace` fonts, so nothing is bundled.
+  - *Hosts* — "Show system entries" (read-only unmanaged lines, via
+    `App.ListSystemHosts()`) and "Confirm before removing" (in-app modal).
+    Frontend-only prefs.
+  - *Helper* — a status row that pings `dnsctl-helper` (`App.HelperStatus()` →
+    `PrivilegedRunner.Ping()`) and shows "Connected" or the error plus the
+    `sudo make install-helper` hint.
 
 ## Privileges
 

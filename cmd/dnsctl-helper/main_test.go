@@ -87,6 +87,13 @@ func TestHelper_UnknownOp(t *testing.T) {
 	}
 }
 
+func TestHelper_Ping(t *testing.T) {
+	client := startHelper(t, filepath.Join(t.TempDir(), "hosts"), selfUID())
+	if err := client.Ping(); err != nil {
+		t.Errorf("Ping over IPC: %v", err)
+	}
+}
+
 func TestHelper_UnauthorizedUID(t *testing.T) {
 	hostsPath := filepath.Join(t.TempDir(), "hosts")
 	// Authorize only a UID that is not us (and not root), so our connection is

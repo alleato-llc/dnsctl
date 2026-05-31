@@ -18,6 +18,7 @@ const DefaultSocketPath = "/var/run/dnsctl-helper.sock"
 type Op string
 
 const (
+	OpPing      Op = "ping"
 	OpSetDNS    Op = "set_dns"
 	OpClearDNS  Op = "clear_dns"
 	OpFlushDNS  Op = "flush_dns"

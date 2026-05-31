@@ -19,15 +19,16 @@ import (
 // App is the bound object exposed to the frontend.
 type App struct {
 	ctx         context.Context
+	runner      service.PrivilegedRunner
 	hosts       *service.HostsService
 	resolver    *service.ResolverService
 	resolverErr error // set when no DNS backend is available; resolver methods report it
 }
 
-// New builds an App from already-constructed services (used in tests and by
-// callers that want to choose the runner).
-func New(hostsSvc *service.HostsService, resolver *service.ResolverService) *App {
-	return &App{hosts: hostsSvc, resolver: resolver}
+// New builds an App from an already-constructed runner and services (used in
+// tests and by callers that want to choose the runner).
+func New(runner service.PrivilegedRunner, hostsSvc *service.HostsService, resolver *service.ResolverService) *App {
+	return &App{runner: runner, hosts: hostsSvc, resolver: resolver}
 }
 
 // NewApp builds the production App: privileged operations are forwarded to the
@@ -36,7 +37,8 @@ func New(hostsSvc *service.HostsService, resolver *service.ResolverService) *App
 func NewApp() *App {
 	runner := service.NewHelperClient()
 	app := &App{
-		hosts: service.NewHostsService(hosts.DefaultPath, runner),
+		runner: runner,
+		hosts:  service.NewHostsService(hosts.DefaultPath, runner),
 	}
 	client, err := dns.NewClient()
 	if err != nil {
@@ -45,6 +47,25 @@ func NewApp() *App {
 		app.resolver = service.NewResolverService(client, runner)
 	}
 	return app
+}
+
+// HelperStatus describes whether the privileged helper is reachable, for the
+// Settings diagnostics view.
+type HelperStatus struct {
+	Reachable bool   `json:"reachable"`
+	Detail    string `json:"detail"`
+}
+
+// HelperStatus probes the privileged path (the dnsctl-helper for the GUI) and
+// reports whether it is usable, with a human-readable detail otherwise.
+func (a *App) HelperStatus() HelperStatus {
+	if a.runner == nil {
+		return HelperStatus{Reachable: false, Detail: "no privileged runner configured"}
+	}
+	if err := a.runner.Ping(); err != nil {
+		return HelperStatus{Reachable: false, Detail: err.Error()}
+	}
+	return HelperStatus{Reachable: true, Detail: "Connected"}
 }
 
 // Startup is the Wails startup hook; it captures the app context.
@@ -57,6 +78,12 @@ func (a *App) Startup(ctx context.Context) {
 // ListHosts returns the dnsctl-managed /etc/hosts entries.
 func (a *App) ListHosts() ([]hosts.Entry, error) {
 	return a.hosts.List()
+}
+
+// ListSystemHosts returns the read-only host entries outside dnsctl's managed
+// block (system/hand-added lines), for the optional system-entries view.
+func (a *App) ListSystemHosts() ([]hosts.Entry, error) {
+	return a.hosts.ListUnmanaged()
 }
 
 // AddHost adds a new entry, failing if the hostname already exists.

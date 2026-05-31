@@ -19,6 +19,8 @@ import (
 // This is the single seam where privilege is acquired; everything above it
 // (the *Service types) is privilege-agnostic and reusable by CLI, TUI, and GUI.
 type PrivilegedRunner interface {
+	// Ping reports whether the privileged path is usable (nil on success).
+	Ping() error
 	SetDNS(service string, servers []string) error
 	ClearDNS(service string) error
 	FlushDNS() error
@@ -86,4 +88,10 @@ func (r *DirectRunner) FlushDNS() error {
 
 func (r *DirectRunner) SaveHosts(path string, content []byte) error {
 	return hosts.WriteAtomic(path, content)
+}
+
+// Ping always succeeds: the in-process runner is usable whenever the process
+// itself has the privileges it needs.
+func (r *DirectRunner) Ping() error {
+	return nil
 }

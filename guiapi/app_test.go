@@ -18,6 +18,7 @@ type fakeRunner struct {
 	flushes    int
 }
 
+func (r *fakeRunner) Ping() error { return nil }
 func (r *fakeRunner) SetDNS(service string, servers []string) error {
 	r.setCalls = append(r.setCalls, service)
 	return nil
@@ -37,6 +38,7 @@ func newTestApp(t *testing.T) (*App, *fakeRunner) {
 	hostsPath := filepath.Join(t.TempDir(), "hosts")
 	mockDNS := dns.NewMockClient()
 	app := New(
+		runner,
 		service.NewHostsService(hostsPath, runner),
 		service.NewResolverService(mockDNS, runner),
 	)
@@ -85,6 +87,7 @@ func TestApp_DNSStatus(t *testing.T) {
 	mockDNS.Primary = "Wi-Fi"
 	// Ethernet left empty -> should report DHCP.
 	app := New(
+		runner,
 		service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), runner),
 		service.NewResolverService(mockDNS, runner),
 	)
@@ -133,7 +136,8 @@ func TestApp_Backend(t *testing.T) {
 		t.Error("expected a backend name with a resolver present")
 	}
 
-	hostsOnly := New(service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), &fakeRunner{}), nil)
+	r := &fakeRunner{}
+	hostsOnly := New(r, service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), r), nil)
 	if got := hostsOnly.Backend(); got != "unavailable" {
 		t.Errorf("expected \"unavailable\" with no resolver, got %q", got)
 	}
@@ -141,9 +145,45 @@ func TestApp_Backend(t *testing.T) {
 
 func TestApp_ResolverUnavailable(t *testing.T) {
 	// hosts-only App: resolver nil, resolverErr set.
-	app := New(service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), &fakeRunner{}), nil)
+	r := &fakeRunner{}
+	app := New(r, service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), r), nil)
 	app.resolverErr = dns.ErrNoDNSBackend
 	if _, err := app.ListServices(); err == nil {
 		t.Error("expected error when resolver unavailable")
+	}
+}
+
+func TestApp_HelperStatus(t *testing.T) {
+	app, _ := newTestApp(t) // fakeRunner.Ping returns nil
+	if st := app.HelperStatus(); !st.Reachable {
+		t.Errorf("expected reachable helper, got %+v", st)
+	}
+}
+
+func TestApp_ListSystemHosts(t *testing.T) {
+	runner := &fakeRunner{}
+	path := filepath.Join(t.TempDir(), "hosts")
+	if err := os.WriteFile(path, []byte("127.0.0.1\tlocalhost\n255.255.255.255\tbroadcasthost\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	app := New(runner, service.NewHostsService(path, runner), nil)
+
+	// Add a managed entry; system entries must remain separate.
+	if err := app.AddHost(hosts.Entry{IP: "10.0.0.1", Hostname: "app.local"}); err != nil {
+		t.Fatalf("AddHost: %v", err)
+	}
+	sys, err := app.ListSystemHosts()
+	if err != nil {
+		t.Fatalf("ListSystemHosts: %v", err)
+	}
+	names := map[string]bool{}
+	for _, e := range sys {
+		names[e.Hostname] = true
+	}
+	if !names["localhost"] || !names["broadcasthost"] {
+		t.Errorf("expected system entries, got %+v", sys)
+	}
+	if names["app.local"] {
+		t.Error("managed entry must not appear in system list")
 	}
 }

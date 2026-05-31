@@ -67,6 +67,31 @@ func TestList_EmptyMarshalsToJSONArray(t *testing.T) {
 	}
 }
 
+func TestUnmanaged(t *testing.T) {
+	content := systemHosts + `
+# BEGIN dnsctl (managed)
+10.0.0.5	staging.api
+# END dnsctl
+`
+	doc := Parse([]byte(content))
+
+	sys := doc.Unmanaged()
+	names := map[string]bool{}
+	for _, e := range sys {
+		names[e.Hostname] = true
+	}
+	if !names["localhost"] || !names["broadcasthost"] {
+		t.Errorf("expected system entries in Unmanaged(), got %+v", sys)
+	}
+	if names["staging.api"] {
+		t.Error("managed entry must not appear in Unmanaged()")
+	}
+	// Always non-nil so it marshals to [].
+	if Parse(nil).Unmanaged() == nil {
+		t.Error("Unmanaged() must be non-nil")
+	}
+}
+
 func TestSet_AddAndUpdate(t *testing.T) {
 	doc := Parse(nil)
 
