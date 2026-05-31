@@ -42,8 +42,35 @@ function applyTheme(theme: Theme): void {
   localStorage.setItem(THEME_KEY, theme);
 }
 
-// Apply before rendering to avoid a flash of the wrong palette.
+// --- Font ---
+
+type Font = "system" | "rounded" | "mono";
+
+const FONT_KEY = "dnsctl.font";
+
+// CSS font stacks per option, used both for the live --ui-font and the preview
+// tiles. Keep in sync with [data-font] rules in style.css.
+const FONT_STACKS: Record<Font, string> = {
+  system: `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif`,
+  rounded: `ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif`,
+  mono: `ui-monospace, "SF Mono", Menlo, Monaco, monospace`,
+};
+
+function getFont(): Font {
+  const f = localStorage.getItem(FONT_KEY);
+  return f === "rounded" || f === "mono" ? f : "system";
+}
+
+function applyFont(font: Font): void {
+  const root = document.documentElement;
+  if (font === "system") root.removeAttribute("data-font");
+  else root.setAttribute("data-font", font);
+  localStorage.setItem(FONT_KEY, font);
+}
+
+// Apply before rendering to avoid a flash of the wrong palette/font.
 applyTheme(getTheme());
+applyFont(getFont());
 
 const GEAR_SVG = `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 5a3 3 0 100 6 3 3 0 000-6zm0 1.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3z"/><path d="M6.94 1.5a.9.9 0 01.9-.75h.32a.9.9 0 01.9.75l.12.74a4.6 4.6 0 011.06.61l.7-.28a.9.9 0 011.1.39l.16.28a.9.9 0 01-.2 1.15l-.58.47c.05.36.05.72 0 1.08l.58.47a.9.9 0 01.2 1.15l-.16.28a.9.9 0 01-1.1.39l-.7-.28c-.33.26-.69.46-1.06.61l-.12.74a.9.9 0 01-.9.75h-.32a.9.9 0 01-.9-.75l-.12-.74a4.6 4.6 0 01-1.06-.61l-.7.28a.9.9 0 01-1.1-.39l-.16-.28a.9.9 0 01.2-1.15l.58-.47a4.7 4.7 0 010-1.08l-.58-.47a.9.9 0 01-.2-1.15l.16-.28a.9.9 0 011.1-.39l.7.28c.33-.26.69-.46 1.06-.61l.12-.74z"/></svg>`;
 
@@ -172,9 +199,20 @@ async function addHost(): Promise<void> {
 // --- Settings ---
 
 function renderSettings(): void {
-  const current = getTheme();
-  const opt = (value: Theme, label: string) =>
-    `<button data-theme="${value}" class="${value === current ? "active" : ""}">${label}</button>`;
+  const currentTheme = getTheme();
+  const currentFont = getFont();
+
+  const themeOpt = (value: Theme, label: string) =>
+    `<button data-theme="${value}" class="${value === currentTheme ? "active" : ""}">${label}</button>`;
+
+  const fontTile = (value: Font, label: string) =>
+    `<button class="font-tile ${value === currentFont ? "active" : ""}" data-font="${value}"
+       style="font-family: ${FONT_STACKS[value]}">
+       <div class="font-sample">Aa</div>
+       <div class="font-sample-sub">127.0.0.1 · app.local</div>
+       <div class="font-name">${label}</div>
+     </button>`;
+
   content.innerHTML = `
     <h1>Settings</h1>
     <p class="subtitle">Preferences</p>
@@ -184,7 +222,13 @@ function renderSettings(): void {
         <span class="secondary">Theme used by the dnsctl window</span>
         <span class="spacer"></span>
         <div class="segmented" id="theme-seg">
-          ${opt("light", "Light")}${opt("dark", "Dark")}${opt("system", "System")}
+          ${themeOpt("light", "Light")}${themeOpt("dark", "Dark")}${themeOpt("system", "System")}
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-label">Font</span>
+        <div class="font-grid" id="font-grid">
+          ${fontTile("system", "System")}${fontTile("rounded", "Rounded")}${fontTile("mono", "Mono")}
         </div>
       </div>
     </div>`;
@@ -194,6 +238,14 @@ function renderSettings(): void {
     btn.addEventListener("click", () => {
       applyTheme(btn.dataset.theme as Theme);
       seg.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
+    });
+  });
+
+  const grid = document.querySelector<HTMLDivElement>("#font-grid")!;
+  grid.querySelectorAll<HTMLButtonElement>(".font-tile").forEach((tile) => {
+    tile.addEventListener("click", () => {
+      applyFont(tile.dataset.font as Font);
+      grid.querySelectorAll(".font-tile").forEach((t) => t.classList.toggle("active", t === tile));
     });
   });
 }

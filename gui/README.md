@@ -24,10 +24,13 @@ A System Settings-style sidebar with:
   resolver config here.
 - **Hosts** — add / view / remove the dnsctl-managed `/etc/hosts` entries.
   Backed by `App.ListHosts/AddHost/RemoveHost`.
-- **Settings** (gear icon) — appearance: Light / Dark / System. This is a
-  frontend-only preference stored in `localStorage` (no Go binding); it sets a
-  `data-theme` attribute that the stylesheet's palette responds to, and
-  "System" follows the OS via `prefers-color-scheme`.
+- **Settings** (gear icon) — appearance (Light / Dark / System) and font
+  (System / Rounded / Mono, shown as live preview tiles). Frontend-only
+  preferences in `localStorage` (no Go binding): theme sets a `data-theme`
+  attribute the palette responds to ("System" follows the OS via
+  `prefers-color-scheme`), and font sets `data-font`, which drives the
+  `--ui-font` variable. Rounded/Mono use the OS `ui-rounded`/`ui-monospace`
+  fonts, so nothing is bundled.
 
 ## Privileges
 

@@ -87,10 +87,10 @@ System-Settings-style sidebar with three views: **DNS Status** (read-only;
 shows each service's servers or "Automatic (DHCP)" and an "Active" badge on the
 default-route service — dnsctl never modifies resolver config here), **Hosts**
 (the managed-entry editor), and **Settings** (gear icon; appearance Light/Dark/
-System). The theme is a frontend-only preference — `localStorage` + a
-`data-theme` attribute the stylesheet responds to (no Go binding). After adding
-an `App` method, re-run `wails generate module` to refresh the TypeScript
-bindings.
+System and font System/Rounded/Mono). Theme and font are frontend-only
+preferences — `localStorage` + `data-theme`/`data-font` attributes the
+stylesheet responds to (no Go binding). After adding an `App` method, re-run
+`wails generate module` to refresh the TypeScript bindings.
 
 ### Entry point / command layer
 

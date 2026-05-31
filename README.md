@@ -252,8 +252,9 @@ It's a System Settings-style window with:
   servers (or "Automatic (DHCP)"), and marks the active/default-route service
   with an "Active" badge. dnsctl reads but never changes this configuration.
 - **Hosts** — add, view, and remove the dnsctl-managed `/etc/hosts` entries.
-- **Settings** (gear icon) — choose the appearance: Light, Dark, or System
-  (follow the OS). The choice is remembered between launches.
+- **Settings** (gear icon) — appearance (Light / Dark / System) and font
+  (System / Rounded / Mono, with live previews). Choices are remembered between
+  launches.
 
 ### Prerequisites
 

@@ -2,6 +2,9 @@
    theme choice ([data-theme="dark"]) or, when no choice is set, by the OS
    preference. data-theme="light" needs no rule — it falls through to :root. */
 :root {
+  /* UI font (overridden by [data-font]); "system" falls through to this. */
+  --ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+
   --bg: #ececec;
   --sidebar-bg: rgba(246, 246, 248, 0.8);
   --content-bg: #ffffff;
@@ -48,6 +51,16 @@
   }
 }
 
+/* Font choices (selectable in Settings). ui-rounded / ui-monospace map to SF
+   Rounded / SF Mono on macOS, so no fonts need bundling. */
+:root[data-font="rounded"] {
+  --ui-font: ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif;
+}
+
+:root[data-font="mono"] {
+  --ui-font: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -59,7 +72,7 @@ body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-family: var(--ui-font);
   font-size: 13px;
   color: var(--text);
   background: var(--bg);
@@ -153,6 +166,61 @@ body {
 .segmented button.active {
   background: var(--card-bg);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+/* Font preview tiles */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.field-label {
+  font-weight: 500;
+}
+
+.font-grid {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.font-tile {
+  flex: 1;
+  min-width: 130px;
+  text-align: left;
+  cursor: pointer;
+  background: var(--content-bg);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--text);
+}
+
+.font-tile.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.font-sample {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.font-sample-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* Label stays in the system font regardless of the tile's preview font. */
+.font-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* Content */
