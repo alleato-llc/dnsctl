@@ -14,12 +14,21 @@ frontend (TypeScript)  ──Wails bindings──►  guiapi.App  ──►  ser
                                                                             └─ unix socket ─► dnsctl-helper (root)
 ```
 
-The GUI runs **unprivileged**, so privileged changes are forwarded to the
-`dnsctl-helper` daemon. Install it first or writes will fail:
+The GUI runs **unprivileged** (never with `sudo` — a GUI app can't elevate
+itself), so privileged changes are forwarded to the `dnsctl-helper` daemon. The
+helper is therefore **required** for the GUI; install it first or writes will
+fail. From the repo root:
 
 ```bash
-make build && make install-helper      # from the repo root
+make build-helper
 ```
+```bash
+sudo make install-helper
+```
+
+You enter a password once at install; afterwards the GUI applies changes
+password-less. See the main [README](../README.md#privileged-helper-password-less-changes)
+for the routing table and security tradeoff.
 
 This module has its own `go.mod` (with `replace github.com/nycjv321/dnsctl =>
 ../`) so the Wails/CGo dependency tree stays out of the main module's build and

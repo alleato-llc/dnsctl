@@ -181,31 +181,58 @@ is written atomically (temp file + rename) so an interrupted run can't corrupt
 
 ## Privileged helper (password-less changes)
 
-Changing DNS settings and writing `/etc/hosts` require root. You can either run
-the mutating commands with `sudo`, or install the **dnsctl-helper** — a small
-root LaunchDaemon that performs the privileged work on your behalf so the CLI
-(and a future GUI) can make changes without `sudo` each time.
+Changing DNS settings and writing `/etc/hosts` require root. The CLI can just be
+run with `sudo`, but the **GUI cannot elevate itself** — so for the GUI (and for
+a password-less CLI) you install the **dnsctl-helper**: a small root LaunchDaemon
+that performs the privileged work on your behalf.
+
+### Workflow
+
+**1. Install once (the only time you enter a password):**
 
 ```bash
-make build            # builds bin/dnsctl and bin/dnsctl-helper
-make install-helper   # installs + starts the helper (asks for sudo once)
-# ...later:
-make uninstall-helper
+make build-helper
+```
+```bash
+sudo make install-helper
 ```
 
-How it routes:
+This registers the helper as a root LaunchDaemon (launchd starts it and keeps it
+running across reboots) and authorizes *your* user. To remove it later:
 
-- **Running as root** (`sudo dnsctl ...`): the change is performed in-process.
-- **Running unprivileged**: the change is forwarded to the helper over a unix
-  socket at `/var/run/dnsctl-helper.sock`. If the helper isn't installed, write
-  commands report a clear connection error (reads still work).
+```bash
+sudo make uninstall-helper
+```
 
-Security model: the helper is the trust boundary. The socket is world-
-connectable, and access is gated by a **peer-UID check** (`LOCAL_PEERCRED`) —
-only root and the UID authorized at install time (your user) may drive it. It
-restricts hosts writes to `/etc/hosts`, validates DNS server IPs, and re-parses/
-validates hosts content before writing. Set `DNSCTL_HELPER_SOCKET` to point the
-CLI at a non-default socket.
+**2. After that, run dnsctl or the GUI as your normal (non-root) user.** Writes
+are forwarded to the already-running helper and applied without a password
+prompt. You never run the GUI with `sudo`.
+
+### How privileged operations are routed
+
+| How you run it | Mechanism | Helper required? | Password? |
+|----------------|-----------|------------------|-----------|
+| GUI (always non-root) | forwarded to the helper | **Yes** (writes fail without it) | No, after install |
+| `dnsctl …` (non-root) | forwarded to the helper | Yes, for writes | No, after install |
+| `sudo dnsctl …` | performed in-process | No | Yes, per `sudo` |
+
+Reads (`hosts list`/`get`, DNS status) are unprivileged and never touch the
+helper. If a write is attempted unprivileged with no helper installed, you get a
+clear connection error.
+
+### Security model
+
+The helper is the trust boundary. The socket
+(`/var/run/dnsctl-helper.sock`) is world-connectable; access is gated by a
+**peer-UID check** (`LOCAL_PEERCRED`) — only root and the UID authorized at
+install time may drive it. The helper restricts hosts writes to `/etc/hosts`,
+validates DNS server IPs, and re-parses/validates hosts content before writing.
+Set `DNSCTL_HELPER_SOCKET` to point a client at a non-default socket.
+
+> **Tradeoff:** once installed, *any* process running as your user can change DNS
+> and `/etc/hosts` (via the root helper) **without a password**. This is the
+> deliberate cost of password-less convenience. If you'd rather authenticate per
+> change, skip the helper and use `sudo dnsctl …` (CLI only).
 
 > Note: for source/Homebrew installs the helper runs unsigned, which is fine
 > locally. Distributing a notarized app would additionally require code-signing
