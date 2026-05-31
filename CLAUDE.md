@@ -17,7 +17,10 @@ This file provides context for Claude Code when working on this project.
 ## Architecture
 
 ```
-cmd/dnsctl/main.go       # Entry point - loads config, creates DNS client, runs TUI
+cmd/dnsctl/
+├── main.go              # Entry point - calls Execute()
+├── root.go              # Cobra root command; default (no subcommand) runs the TUI
+└── hosts.go             # `dnsctl hosts` subcommands (list/get/add/set/rm)
 internal/
 ├── config/
 │   ├── config.go        # Config loading from ~/.config/dnsctl/config.yaml
@@ -28,6 +31,10 @@ internal/
 │   ├── client.go        # Client interface for DNS operations
 │   ├── macos.go         # DNS operations wrapper around networksetup
 │   └── mock.go          # Mock client for testing
+├── hosts/
+│   ├── hosts.go         # Entry type, managed-block parser, CRUD, validation
+│   ├── store.go         # Atomic file read/write + backup
+│   └── hosts_test.go    # Parser, CRUD, and store tests
 └── tui/
     ├── app.go           # Bubble Tea Model with Init/Update/View
     ├── app_test.go      # TUI logic tests
@@ -36,6 +43,14 @@ internal/
     ├── views.go         # View rendering functions and View enum
     └── views_test.go    # View rendering tests
 ```
+
+### Entry point / command layer
+
+The binary uses [Cobra](https://github.com/spf13/cobra). The root command's
+`RunE` launches the Bubble Tea TUI, so bare `dnsctl` behaves as it always has.
+Subcommands (currently `hosts`) provide headless, scriptable/LLM-friendly
+operations. New subcommands are added as files under `cmd/dnsctl/` that register
+themselves on `rootCmd` in an `init()`.
 
 ## Key Patterns
 
@@ -83,6 +98,23 @@ All DNS operations are in `internal/dns/macos.go`:
 - `ClearDNSServers(service)` - Clear DNS (revert to DHCP)
 - `FlushCache()` - Flush DNS cache
 
+### /etc/hosts Management
+
+`internal/hosts/` manages local hostname mappings, surfaced via `dnsctl hosts`.
+
+- **Managed block**: dnsctl only edits lines inside a sentinel-delimited block
+  (`# BEGIN dnsctl` ... `# END dnsctl`). Content outside the block is preserved
+  byte-for-byte, so system entries are never touched. The block is omitted
+  entirely when there are no managed entries.
+- `hosts.go` is pure logic over file content: `Parse([]byte) *Document`, then
+  `List`/`Get`/`Set`/`Remove` (keyed on hostname, case-insensitive) and
+  `Render() []byte`. `Entry.Validate()` checks IP/hostname/alias syntax.
+- `store.go` wraps a file path: `Load()` (missing file = empty), and `Save()`
+  which backs up to `<path>.dnsctl.bak` then writes atomically (temp file +
+  rename) preserving the original mode.
+- Reads work unprivileged; writes need root (`sudo`). Tests use `t.TempDir()`
+  with a `--file` override rather than touching the real `/etc/hosts`.
+
 ## Build Commands
 
 ```bash
@@ -123,6 +155,13 @@ Default config is generated if file doesn't exist (see `config.DefaultConfig()`)
 1. Add method to `Client` in `internal/dns/macos.go`
 2. Create command function in `internal/tui/app.go` that returns `tea.Cmd`
 3. Handle result message in `Update()`
+
+### Adding a new CLI subcommand
+
+1. Create `cmd/dnsctl/<name>.go` with a `*cobra.Command`
+2. Register it on `rootCmd` (or a parent command) from an `init()`
+3. Keep business logic in an `internal/` package; the command file should only
+   wire flags/args to that package and format output
 
 ## Testing
 

@@ -15,6 +15,7 @@ A Unix CLI tool with a TUI for switching between DNS server profiles.
 - **Clear DNS** - Revert to DHCP defaults with a single keypress
 - **Multiple network services** - Switch between Wi-Fi, Ethernet, and other interfaces
 - **DNS cache flushing** - Automatically flush DNS cache after changes
+- **`/etc/hosts` management** - Headless `dnsctl hosts` subcommands to list/add/update/remove local hostname mappings, with JSON output for scripts and agents
 
 ## Installation
 
@@ -127,6 +128,55 @@ Main Screen                    Profile Selection
 └─────────────────────┘
 ```
 
+## Managing `/etc/hosts` entries
+
+The `dnsctl hosts` subcommand manages local hostname mappings (e.g. pointing
+`myapp.local` at `127.0.0.1`) from the command line — handy for scripts and
+LLM/agent invocation where the interactive TUI isn't appropriate.
+
+dnsctl only ever edits its own **managed block**, delimited by sentinel
+comments. Everything outside that block — `localhost`, `broadcasthost`, and any
+lines you added by hand — is preserved exactly:
+
+```
+# BEGIN dnsctl (managed by `dnsctl hosts` — do not edit by hand)
+127.0.0.1	myapp.local	# dev box
+10.0.0.5	staging.api api2.local
+# END dnsctl
+```
+
+### Commands
+
+```bash
+dnsctl hosts list                                   # list managed entries
+dnsctl hosts get myapp.local                        # show one entry
+dnsctl hosts add myapp.local 127.0.0.1              # add (fails if it exists)
+dnsctl hosts set myapp.local 127.0.0.1              # add or update (idempotent)
+dnsctl hosts rm  myapp.local                        # remove an entry
+```
+
+Writing `/etc/hosts` requires root, so run the mutating commands with `sudo`:
+
+```bash
+sudo dnsctl hosts add staging.api 10.0.0.5 --alias api2.local --comment "staging"
+```
+
+### Flags
+
+| Flag | Commands | Description |
+|------|----------|-------------|
+| `--json` | `list`, `get` | Emit JSON instead of a table |
+| `--file PATH` | all | Operate on a different file (default `/etc/hosts`) |
+| `--alias NAME` | `add`, `set` | Additional hostname for the same IP (repeatable) |
+| `--comment TEXT` | `add`, `set` | Trailing comment for the entry |
+| `--dry-run` | `add`, `set`, `rm` | Print the resulting file without writing |
+| `--flush` | `add`, `set`, `rm` | Flush the DNS cache after writing |
+
+Reads (`list`/`get`) don't need elevated privileges; only writes do. Before each
+write the current file is backed up to `<path>.dnsctl.bak`, and the new content
+is written atomically (temp file + rename) so an interrupted run can't corrupt
+`/etc/hosts`.
+
 ## Permissions
 
 Changing DNS settings on macOS requires appropriate permissions. You may need to:
@@ -175,13 +225,17 @@ Tests use a mock DNS client (`internal/dns/mock.go`) to avoid requiring system a
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
 - [Lip Gloss](https://github.com/charmbracelet/lipgloss) - Styling
 - [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
+- [Cobra](https://github.com/spf13/cobra) - CLI commands and flag parsing
 - [yaml.v3](https://gopkg.in/yaml.v3) - YAML parsing
 
 ## Project Structure
 
 ```
-local-network-management/
-├── cmd/dnsctl/main.go           # Entry point
+dnsctl/
+├── cmd/dnsctl/
+│   ├── main.go                  # Entry point (calls Execute)
+│   ├── root.go                  # Cobra root command; default action runs the TUI
+│   └── hosts.go                 # `dnsctl hosts` subcommands
 ├── internal/
 │   ├── config/
 │   │   ├── config.go            # YAML config loading
@@ -190,6 +244,10 @@ local-network-management/
 │   │   ├── client.go            # DNS client interface
 │   │   ├── macos.go             # networksetup wrapper
 │   │   └── mock.go              # Mock client for testing
+│   ├── hosts/
+│   │   ├── hosts.go             # Entry type, managed-block parser, CRUD
+│   │   ├── store.go             # Atomic file read/write + backup
+│   │   └── hosts_test.go        # Parser, CRUD, and store tests
 │   └── tui/
 │       ├── app.go               # Bubble Tea model
 │       ├── app_test.go          # TUI logic tests
