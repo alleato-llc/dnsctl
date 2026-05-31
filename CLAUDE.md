@@ -21,6 +21,8 @@ cmd/dnsctl/
 ├── main.go              # Entry point - calls Execute()
 ├── root.go              # Cobra root command; default (no subcommand) runs the TUI
 └── hosts.go             # `dnsctl hosts` subcommands (list/get/add/set/rm)
+cmd/dnsctl-helper/
+└── main.go              # Privileged root daemon; executes privileged ops over a unix socket
 internal/
 ├── config/
 │   ├── config.go        # Config loading from ~/.config/dnsctl/config.yaml
@@ -35,10 +37,13 @@ internal/
 │   ├── hosts.go         # Entry type, managed-block parser, CRUD, validation
 │   ├── store.go         # Atomic file read/write + backup (WriteAtomic primitive)
 │   └── hosts_test.go    # Parser, CRUD, and store tests
+├── ipc/
+│   └── protocol.go      # Request/Response types shared by helper + HelperClient
 ├── service/            # Privilege-agnostic facade shared by CLI/TUI/GUI
 │   ├── hosts.go         # HostsService: orchestrates load/validate/mutate/persist
+│   ├── resolver.go      # ResolverService: resolver reads + privileged writes
 │   ├── privilege.go     # PrivilegedRunner interface + DirectRunner (in-process)
-│   ├── helper_client.go # HelperClient stub (forwards to root helper, TODO)
+│   ├── helper_client.go # HelperClient: forwards privileged ops to the helper over IPC
 │   └── hosts_test.go    # Service tests with a recording runner
 └── tui/
     ├── app.go           # Bubble Tea Model with Init/Update/View
@@ -68,13 +73,26 @@ Operations that need root (changing resolver config, flushing the cache,
 writing the hosts file) go through the `PrivilegedRunner` interface — the single
 seam where privilege is acquired:
 
-- `DirectRunner` runs in-process; used by `sudo dnsctl` and (later) inside the
-  root helper daemon.
-- `HelperClient` (stub today) will forward operations over IPC to a privileged
-  helper at `cmd/dnsctl-helper`, for the unprivileged GUI and a non-root CLI.
+- `DirectRunner` runs in-process; used by `sudo dnsctl` and inside the root
+  helper daemon.
+- `HelperClient` forwards operations over a unix socket (internal/ipc) to the
+  privileged helper at `cmd/dnsctl-helper`, for the unprivileged GUI and a
+  non-root CLI.
 
-To add an operation: put orchestration in a `*Service` method, and if it has a
-root-only side effect, add it to `PrivilegedRunner` (and both implementations).
+Both the TUI (`ResolverService`) and the `hosts` CLI (`HostsService`) build on
+this seam. To add an operation: put orchestration in a `*Service` method, and if
+it has a root-only side effect, add it to `PrivilegedRunner` (and both
+implementations).
+
+### Privileged helper (`cmd/dnsctl-helper`)
+
+The helper is a separate root daemon that executes privileged operations for
+unprivileged clients. It is the **trust boundary**: it re-validates every
+request (DNS servers must be valid IPs; hosts writes are restricted to an
+allow-listed path and the content is re-parsed/validated) and must never trust
+its caller. The serve loop and `dispatch` are factored out of `main` so they can
+be tested over a temp socket. Peer-UID authentication (LOCAL_PEERCRED) is a
+known TODO before shipping; today it relies on 0600 socket permissions.
 
 ## Key Patterns
 

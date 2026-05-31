@@ -1,29 +1,71 @@
 package service
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"net"
 
-// ErrHelperUnavailable is returned by every HelperClient method until the
-// privileged helper (cmd/dnsctl-helper) and its IPC are implemented.
-var ErrHelperUnavailable = errors.New("privileged helper not yet implemented")
+	"github.com/nycjv321/dnsctl/internal/ipc"
+)
 
-// HelperClient forwards privileged operations to the root helper daemon over
-// IPC (XPC or a unix socket, TBD). It is a stub today so the GUI and a non-root
-// CLI can be built against the PrivilegedRunner seam before the helper exists.
+// HelperClient forwards privileged operations to the root helper daemon
+// (cmd/dnsctl-helper) over a unix socket. It lets the unprivileged GUI and a
+// non-root CLI perform privileged work without being root themselves.
 //
-// When implemented, the helper must re-validate every request — it is the root
-// trust boundary and must never trust its caller.
+// The helper is the root trust boundary: it re-validates and authorizes every
+// request, so it must never assume the client is well-behaved.
 type HelperClient struct {
-	// SocketPath string // future: path to the helper's listener
+	// SocketPath is the helper's unix socket. Empty means ipc.DefaultSocketPath.
+	SocketPath string
 }
 
 var _ PrivilegedRunner = (*HelperClient)(nil)
 
-// NewHelperClient returns a HelperClient stub.
+// NewHelperClient returns a HelperClient using the default socket path.
 func NewHelperClient() *HelperClient {
-	return &HelperClient{}
+	return &HelperClient{SocketPath: ipc.DefaultSocketPath}
 }
 
-func (h *HelperClient) SetDNS(service string, servers []string) error { return ErrHelperUnavailable }
-func (h *HelperClient) ClearDNS(service string) error                 { return ErrHelperUnavailable }
-func (h *HelperClient) FlushDNS() error                               { return ErrHelperUnavailable }
-func (h *HelperClient) SaveHosts(path string, content []byte) error   { return ErrHelperUnavailable }
+func (h *HelperClient) socketPath() string {
+	if h.SocketPath == "" {
+		return ipc.DefaultSocketPath
+	}
+	return h.SocketPath
+}
+
+// call sends one request and returns the helper's reported error, if any.
+func (h *HelperClient) call(req ipc.Request) error {
+	conn, err := net.Dial("unix", h.socketPath())
+	if err != nil {
+		return fmt.Errorf("connect to dnsctl-helper at %s: %w", h.socketPath(), err)
+	}
+	defer conn.Close()
+
+	if err := ipc.WriteRequest(conn, req); err != nil {
+		return fmt.Errorf("send request to helper: %w", err)
+	}
+	var resp ipc.Response
+	if err := ipc.ReadResponse(conn, &resp); err != nil {
+		return fmt.Errorf("read response from helper: %w", err)
+	}
+	if resp.Error != "" {
+		return errors.New(resp.Error)
+	}
+	return nil
+}
+
+func (h *HelperClient) SetDNS(service string, servers []string) error {
+	return h.call(ipc.Request{Op: ipc.OpSetDNS, Service: service, Servers: servers})
+}
+
+func (h *HelperClient) ClearDNS(service string) error {
+	return h.call(ipc.Request{Op: ipc.OpClearDNS, Service: service})
+}
+
+func (h *HelperClient) FlushDNS() error {
+	return h.call(ipc.Request{Op: ipc.OpFlushDNS})
+}
+
+func (h *HelperClient) SaveHosts(path string, content []byte) error {
+	return h.call(ipc.Request{Op: ipc.OpSaveHosts, Path: path, Content: content})
+}

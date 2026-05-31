@@ -1,12 +1,17 @@
-.PHONY: build build-darwin build-linux build-all install clean run test
+.PHONY: build build-helper build-darwin build-linux build-all install clean run test
 
 BINARY_NAME=dnsctl
+HELPER_NAME=dnsctl-helper
 BUILD_DIR=bin
 INSTALL_DIR=/usr/local/bin
 
-build:
+build: build-helper
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dnsctl
+
+build-helper:
+	@mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/$(HELPER_NAME) ./cmd/dnsctl-helper
 
 build-darwin:
 	@mkdir -p $(BUILD_DIR)
