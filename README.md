@@ -16,6 +16,8 @@ A Unix CLI tool with a TUI for switching between DNS server profiles.
 - **Multiple network services** - Switch between Wi-Fi, Ethernet, and other interfaces
 - **DNS cache flushing** - Automatically flush DNS cache after changes
 - **`/etc/hosts` management** - Headless `dnsctl hosts` subcommands to list/add/update/remove local hostname mappings, with JSON output for scripts and agents
+- **Privileged helper** - Optional root daemon for password-less DNS/hosts changes without `sudo`
+- **Desktop GUI** - Optional [Wails](https://wails.io) (Go + TypeScript) frontend on the same core (see [Desktop GUI](#desktop-gui-wails))
 
 ## Installation
 
@@ -208,6 +210,47 @@ point the CLI at a non-default socket.
 > locally. Distributing a notarized app would additionally require code-signing
 > the helper (and, for a bundled GUI, registering it via `SMAppService`).
 
+## Desktop GUI (Wails)
+
+An optional desktop GUI lives in [`gui/`](gui/), built with
+[Wails](https://wails.io) (Go backend, TypeScript frontend). It binds
+`guiapi.App`, which sits on the same `internal/service` facade as the CLI and
+TUI, so all three share one core. The GUI is a **separate Go module** (its own
+`go.mod`) so the Wails/CGo dependency tree stays out of the main build.
+
+### Prerequisites
+
+- Go 1.24+ and Node.js + npm
+- The Wails v2 CLI:
+  ```bash
+  go install github.com/wailsapp/wails/v2/cmd/wails@latest
+  wails doctor    # verifies system dependencies
+  ```
+- The privileged helper, since the GUI runs unprivileged and forwards changes
+  to it:
+  ```bash
+  make build && make install-helper
+  ```
+
+### First-time setup
+
+```bash
+cd gui
+go mod tidy             # resolve the Wails dependency tree
+wails generate module   # generate frontend/wailsjs/ TypeScript bindings
+```
+
+### Run / build
+
+```bash
+cd gui
+wails dev     # hot-reloading development build
+wails build   # production app -> gui/build/bin/dnsctl-gui.app
+```
+
+See [`gui/README.md`](gui/README.md) for architecture details and how to add
+new bound methods.
+
 ## Permissions
 
 Changing DNS settings on macOS requires appropriate permissions. You may need to:
@@ -266,29 +309,29 @@ Tests use a mock DNS client (`internal/dns/mock.go`) to avoid requiring system a
 
 ```
 dnsctl/
-├── cmd/dnsctl/
-│   ├── main.go                  # Entry point (calls Execute)
-│   ├── root.go                  # Cobra root command; default action runs the TUI
-│   └── hosts.go                 # `dnsctl hosts` subcommands
+├── cmd/
+│   ├── dnsctl/                   # Main binary: CLI + TUI
+│   │   ├── main.go               #   Entry point (calls Execute)
+│   │   ├── root.go               #   Cobra root command; default action runs the TUI
+│   │   ├── runner.go             #   chooseRunner(): in-process if root, else helper
+│   │   └── hosts.go              #   `dnsctl hosts` subcommands
+│   └── dnsctl-helper/            # Privileged root daemon
+│       ├── main.go               #   Serves privileged ops over a unix socket
+│       └── peercred_*.go         #   Peer-UID authorization (LOCAL_PEERCRED)
 ├── internal/
-│   ├── config/
-│   │   ├── config.go            # YAML config loading
-│   │   └── config_test.go       # Config tests
-│   ├── dns/
-│   │   ├── client.go            # DNS client interface
-│   │   ├── macos.go             # networksetup wrapper
-│   │   └── mock.go              # Mock client for testing
-│   ├── hosts/
-│   │   ├── hosts.go             # Entry type, managed-block parser, CRUD
-│   │   ├── store.go             # Atomic file read/write + backup
-│   │   └── hosts_test.go        # Parser, CRUD, and store tests
-│   └── tui/
-│       ├── app.go               # Bubble Tea model
-│       ├── app_test.go          # TUI logic tests
-│       ├── keys.go              # Keybindings
-│       ├── styles.go            # Lip Gloss styling
-│       ├── views.go             # View rendering
-│       └── views_test.go        # View rendering tests
+│   ├── config/                  # YAML config loading
+│   ├── dns/                     # networksetup wrapper + mock client
+│   ├── hosts/                   # /etc/hosts managed-block parser, CRUD, atomic write
+│   ├── ipc/                     # Helper request/response protocol
+│   ├── service/                 # Privilege-agnostic facade (Hosts/ResolverService)
+│   │                            #   + PrivilegedRunner: DirectRunner | HelperClient
+│   └── tui/                     # Bubble Tea TUI
+├── guiapi/                      # GUI binding layer on the facade (testable, main module)
+├── gui/                         # Wails desktop app — SEPARATE go.mod
+│   ├── main.go                   #   Wails bootstrap, binds guiapi.App
+│   ├── wails.json                #   Wails project config
+│   └── frontend/                 #   TypeScript frontend
+├── packaging/                   # LaunchDaemon plist + helper install/uninstall scripts
 ├── go.mod
 ├── Makefile
 └── config.example.yaml
