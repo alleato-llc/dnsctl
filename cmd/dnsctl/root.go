@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nycjv321/dnsctl/internal/config"
 	"github.com/nycjv321/dnsctl/internal/dns"
+	"github.com/nycjv321/dnsctl/internal/service"
 	"github.com/nycjv321/dnsctl/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -57,7 +58,9 @@ func runTUI() error {
 		return fmt.Errorf("creating DNS client: %w", err)
 	}
 
-	model := tui.NewModel(cfg, dnsClient)
+	// Share one DNS client for reads and (in-process) privileged writes.
+	resolver := service.NewResolverService(dnsClient, service.NewDirectRunnerWithClient(dnsClient))
+	model := tui.NewModel(cfg, resolver)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("running program: %w", err)

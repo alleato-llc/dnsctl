@@ -7,7 +7,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nycjv321/dnsctl/internal/config"
 	"github.com/nycjv321/dnsctl/internal/dns"
+	"github.com/nycjv321/dnsctl/internal/service"
 )
+
+// newResolver wraps a (mock) DNS client in a ResolverService whose privileged
+// writes are routed back to the same client, so tests can assert on the mock's
+// recorded calls.
+func newResolver(client dns.Client) *service.ResolverService {
+	return service.NewResolverService(client, service.NewDirectRunnerWithClient(client))
+}
 
 // testConfig returns a test configuration with known profiles.
 func testConfig() *config.Config {
@@ -39,7 +47,7 @@ func testModel() (Model, *dns.MockClient) {
 	mock := dns.NewMockClient()
 	mock.DNSServers["Wi-Fi"] = []string{"8.8.8.8", "8.8.4.4"}
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.services = mock.Services
 	model.currentDNS = mock.DNSServers["Wi-Fi"]
 	return model, mock
@@ -50,13 +58,13 @@ func TestNewModel_InitializesCorrectly(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
 
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 
 	if model.config != cfg {
 		t.Error("config not set correctly")
 	}
-	if model.dnsClient != mock {
-		t.Error("dnsClient not set correctly")
+	if model.resolver == nil {
+		t.Error("resolver not set correctly")
 	}
 	if model.currentView != ViewMain {
 		t.Errorf("expected currentView to be ViewMain, got %v", model.currentView)
@@ -568,7 +576,7 @@ func TestApplyProfile_NoFlushWhenDisabled(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
 	cfg.Settings.FlushCache = false
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 
 	profile := config.Profile{
 		Description: "Test",

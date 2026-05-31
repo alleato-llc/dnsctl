@@ -11,7 +11,7 @@ import (
 func TestRenderMainView_ShowsCurrentDNS(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentDNS = []string{"1.1.1.1", "1.0.0.1"}
 	model.currentService = "Wi-Fi"
 
@@ -32,7 +32,7 @@ func TestRenderMainView_ShowsCurrentDNS(t *testing.T) {
 func TestRenderMainView_ShowsDHCP(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentDNS = nil
 	model.currentService = "Wi-Fi"
 
@@ -47,7 +47,7 @@ func TestRenderMainView_ShowsDHCP(t *testing.T) {
 func TestRenderMainView_ShowsStatusMessage(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.statusMsg = "Applied profile: cloudflare"
 	model.statusIsError = false
 
@@ -62,7 +62,7 @@ func TestRenderMainView_ShowsStatusMessage(t *testing.T) {
 func TestRenderMainView_ShowsErrorStatus(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.statusMsg = "Error: permission denied"
 	model.statusIsError = true
 
@@ -77,7 +77,7 @@ func TestRenderMainView_ShowsErrorStatus(t *testing.T) {
 func TestRenderMainView_ShowsTitle(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 
 	output := model.renderMainView()
 
@@ -90,7 +90,7 @@ func TestRenderMainView_ShowsTitle(t *testing.T) {
 func TestRenderMainView_ShowsHelp(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 
 	output := model.renderMainView()
 
@@ -109,7 +109,7 @@ func TestRenderMainView_ShowsHelp(t *testing.T) {
 func TestRenderProfilesView_ListsProfiles(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewProfiles
 
 	output := model.renderProfilesView()
@@ -129,7 +129,7 @@ func TestRenderProfilesView_ListsProfiles(t *testing.T) {
 func TestRenderProfilesView_HighlightsSelected(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewProfiles
 	model.selectedIndex = 0
 
@@ -145,7 +145,7 @@ func TestRenderProfilesView_HighlightsSelected(t *testing.T) {
 func TestRenderProfilesView_ShowsDescription(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewProfiles
 	model.selectedIndex = 0 // cloudflare is first alphabetically
 
@@ -160,7 +160,7 @@ func TestRenderProfilesView_ShowsDescription(t *testing.T) {
 func TestRenderProfilesView_ShowsServers(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewProfiles
 	model.selectedIndex = 0 // cloudflare
 
@@ -175,7 +175,7 @@ func TestRenderProfilesView_ShowsServers(t *testing.T) {
 func TestRenderProfilesView_ShowsDHCPForDHCPProfile(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewProfiles
 	// Find dhcp profile index
 	names := cfg.ProfileNames()
@@ -197,7 +197,7 @@ func TestRenderProfilesView_ShowsDHCPForDHCPProfile(t *testing.T) {
 func TestRenderProfilesView_ShowsTitle(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewProfiles
 
 	output := model.renderProfilesView()
@@ -211,7 +211,7 @@ func TestRenderProfilesView_ShowsTitle(t *testing.T) {
 func TestRenderServicesView_ListsServices(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewServices
 	model.services = []string{"Wi-Fi", "Ethernet", "Thunderbolt Bridge"}
 
@@ -232,7 +232,7 @@ func TestRenderServicesView_ListsServices(t *testing.T) {
 func TestRenderServicesView_HighlightsSelected(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewServices
 	model.services = []string{"Wi-Fi", "Ethernet"}
 	model.selectedIndex = 1
@@ -248,7 +248,7 @@ func TestRenderServicesView_HighlightsSelected(t *testing.T) {
 func TestRenderServicesView_ShowsCurrentMarker(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewServices
 	model.services = []string{"Wi-Fi", "Ethernet"}
 	model.currentService = "Wi-Fi"
@@ -264,7 +264,7 @@ func TestRenderServicesView_ShowsCurrentMarker(t *testing.T) {
 func TestRenderServicesView_ShowsTitle(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewServices
 	model.services = []string{"Wi-Fi"}
 
@@ -279,7 +279,7 @@ func TestRenderServicesView_ShowsTitle(t *testing.T) {
 func TestGetSelectedProfile_ReturnsCorrectProfile(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.selectedIndex = 0 // cloudflare (first alphabetically)
 
 	name, profile, ok := model.getSelectedProfile()
@@ -299,7 +299,7 @@ func TestGetSelectedProfile_ReturnsCorrectProfile(t *testing.T) {
 func TestGetSelectedProfile_InvalidIndex(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.selectedIndex = 100
 
 	_, _, ok := model.getSelectedProfile()
@@ -313,7 +313,7 @@ func TestGetSelectedProfile_InvalidIndex(t *testing.T) {
 func TestGetSelectedProfile_NegativeIndex(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.selectedIndex = -1
 
 	_, _, ok := model.getSelectedProfile()
@@ -327,7 +327,7 @@ func TestGetSelectedProfile_NegativeIndex(t *testing.T) {
 func TestGetSelectedService_ReturnsCorrectService(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.services = []string{"Wi-Fi", "Ethernet"}
 	model.selectedIndex = 1
 
@@ -345,7 +345,7 @@ func TestGetSelectedService_ReturnsCorrectService(t *testing.T) {
 func TestGetSelectedService_InvalidIndex(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.services = []string{"Wi-Fi"}
 	model.selectedIndex = 100
 
@@ -360,7 +360,7 @@ func TestGetSelectedService_InvalidIndex(t *testing.T) {
 func TestGetSelectedService_NegativeIndex(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.services = []string{"Wi-Fi"}
 	model.selectedIndex = -1
 
@@ -375,7 +375,7 @@ func TestGetSelectedService_NegativeIndex(t *testing.T) {
 func TestView_ReturnsMainViewByDefault(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewMain
 
 	output := model.View()
@@ -389,7 +389,7 @@ func TestView_ReturnsMainViewByDefault(t *testing.T) {
 func TestView_ReturnsProfilesView(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewProfiles
 
 	output := model.View()
@@ -403,7 +403,7 @@ func TestView_ReturnsProfilesView(t *testing.T) {
 func TestView_ReturnsServicesView(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 	model.currentView = ViewServices
 	model.services = []string{"Wi-Fi"}
 
@@ -418,7 +418,7 @@ func TestView_ReturnsServicesView(t *testing.T) {
 func TestRenderListHelp(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 
 	output := model.renderListHelp()
 
@@ -440,7 +440,7 @@ func TestRenderListHelp(t *testing.T) {
 func TestRenderMainHelp(t *testing.T) {
 	mock := dns.NewMockClient()
 	cfg := testConfig()
-	model := NewModel(cfg, mock)
+	model := NewModel(cfg, newResolver(mock))
 
 	output := model.renderMainHelp()
 

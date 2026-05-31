@@ -7,13 +7,13 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nycjv321/dnsctl/internal/config"
-	"github.com/nycjv321/dnsctl/internal/dns"
+	"github.com/nycjv321/dnsctl/internal/service"
 )
 
 // Model represents the application state.
 type Model struct {
 	config         *config.Config
-	dnsClient      dns.Client
+	resolver       *service.ResolverService
 	keys           KeyMap
 	currentView    View
 	currentService string
@@ -26,11 +26,11 @@ type Model struct {
 	height         int
 }
 
-// NewModel creates a new TUI model.
-func NewModel(cfg *config.Config, dnsClient dns.Client) Model {
+// NewModel creates a new TUI model backed by the shared resolver facade.
+func NewModel(cfg *config.Config, resolver *service.ResolverService) Model {
 	return Model{
 		config:         cfg,
-		dnsClient:      dnsClient,
+		resolver:       resolver,
 		keys:           DefaultKeyMap(),
 		currentView:    ViewMain,
 		currentService: cfg.DefaultService,
@@ -46,13 +46,13 @@ func (m Model) Init() tea.Cmd {
 // refreshStatus fetches the current DNS status.
 func (m Model) refreshStatus() tea.Msg {
 	// Get network services
-	services, err := m.dnsClient.ListNetworkServices()
+	services, err := m.resolver.ListServices()
 	if err != nil {
 		return statusMsg{err: err}
 	}
 
 	// Get current DNS servers
-	dnsServers, err := m.dnsClient.GetDNSServers(m.currentService)
+	dnsServers, err := m.resolver.CurrentDNS(m.currentService)
 	if err != nil {
 		return statusMsg{err: err}
 	}
@@ -254,10 +254,10 @@ func (m Model) applyProfile(name string, profile config.Profile) tea.Cmd {
 
 		if profile.IsDHCP() {
 			// Clear DNS to use DHCP
-			err = m.dnsClient.ClearDNSServers(m.currentService)
+			err = m.resolver.Clear(m.currentService)
 		} else {
 			// Set specific DNS servers
-			err = m.dnsClient.SetDNSServers(m.currentService, profile.Servers)
+			err = m.resolver.Set(m.currentService, profile.Servers)
 		}
 
 		if err != nil {
@@ -267,9 +267,9 @@ func (m Model) applyProfile(name string, profile config.Profile) tea.Cmd {
 			}
 		}
 
-		// Flush cache if configured
+		// Flush cache if configured (best-effort)
 		if m.config.Settings.FlushCache {
-			_ = m.dnsClient.FlushCache()
+			_ = m.resolver.Flush()
 		}
 
 		return dnsChangedMsg{
@@ -281,7 +281,7 @@ func (m Model) applyProfile(name string, profile config.Profile) tea.Cmd {
 
 // clearDNS clears the DNS servers to use DHCP defaults.
 func (m Model) clearDNS() tea.Msg {
-	err := m.dnsClient.ClearDNSServers(m.currentService)
+	err := m.resolver.Clear(m.currentService)
 	if err != nil {
 		return dnsChangedMsg{
 			success: false,
@@ -289,9 +289,9 @@ func (m Model) clearDNS() tea.Msg {
 		}
 	}
 
-	// Flush cache if configured
+	// Flush cache if configured (best-effort)
 	if m.config.Settings.FlushCache {
-		_ = m.dnsClient.FlushCache()
+		_ = m.resolver.Flush()
 	}
 
 	return dnsChangedMsg{

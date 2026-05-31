@@ -40,6 +40,13 @@ func NewDirectRunner() *DirectRunner {
 	return &DirectRunner{}
 }
 
+// NewDirectRunnerWithClient returns a DirectRunner that uses the given DNS
+// client instead of creating one lazily. Useful for sharing a single client
+// with a ResolverService, and for injecting a mock in tests.
+func NewDirectRunnerWithClient(client dns.Client) *DirectRunner {
+	return &DirectRunner{client: client}
+}
+
 func (r *DirectRunner) ensureClient() (dns.Client, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
