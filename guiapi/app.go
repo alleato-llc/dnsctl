@@ -148,3 +148,12 @@ func (a *App) FlushDNS() error {
 	}
 	return a.resolver.Flush()
 }
+
+// Backend returns the DNS backend's display name (shown in the status view), or
+// "unavailable" when no DNS backend was detected.
+func (a *App) Backend() string {
+	if a.resolver == nil {
+		return "unavailable"
+	}
+	return a.resolver.Backend()
+}

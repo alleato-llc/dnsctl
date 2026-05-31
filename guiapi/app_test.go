@@ -126,6 +126,18 @@ func TestApp_ResolverRoutesThroughRunner(t *testing.T) {
 	}
 }
 
+func TestApp_Backend(t *testing.T) {
+	app, _ := newTestApp(t)
+	if app.Backend() == "" {
+		t.Error("expected a backend name with a resolver present")
+	}
+
+	hostsOnly := New(service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), &fakeRunner{}), nil)
+	if got := hostsOnly.Backend(); got != "unavailable" {
+		t.Errorf("expected \"unavailable\" with no resolver, got %q", got)
+	}
+}
+
 func TestApp_ResolverUnavailable(t *testing.T) {
 	// hosts-only App: resolver nil, resolverErr set.
 	app := New(service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), &fakeRunner{}), nil)
