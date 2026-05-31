@@ -221,10 +221,11 @@ TUI, so all three share one core. The GUI is a **separate Go module** (its own
 ### Prerequisites
 
 - Go 1.24+ and Node.js + npm
-- The Wails v2 CLI:
+- The Wails v2 CLI — install it, then verify system dependencies with
+  `wails doctor`:
   ```bash
   go install github.com/wailsapp/wails/v2/cmd/wails@latest
-  wails doctor    # verifies system dependencies
+  wails doctor
   ```
   `go install` places the binary in Go's bin directory (`$(go env GOPATH)/bin`,
   typically `~/go/bin`). If `wails doctor` reports `command not found`, that
@@ -241,22 +242,36 @@ TUI, so all three share one core. The GUI is a **separate Go module** (its own
 
 ### First-time setup
 
+Resolve the Wails dependency tree, then generate the TypeScript bindings for
+`guiapi.App` into `frontend/wailsjs/`:
+
 ```bash
 cd gui
-go mod tidy             # resolve the Wails dependency tree
-wails generate module   # generate frontend/wailsjs/ TypeScript bindings
+go mod tidy
+wails generate module
 ```
 
 ### Run / build
 
+`wails dev` runs a hot-reloading development build; `wails build` produces a
+production app at `gui/build/bin/dnsctl-gui.app`:
+
 ```bash
 cd gui
-wails dev     # hot-reloading development build
-wails build   # production app -> gui/build/bin/dnsctl-gui.app
+wails dev
+```
+
+```bash
+cd gui
+wails build
 ```
 
 See [`gui/README.md`](gui/README.md) for architecture details and how to add
 new bound methods.
+
+> Tip: copy commands without the surrounding comments. In an interactive zsh
+> shell, `#` is not treated as a comment by default, so a pasted
+> `go mod tidy   # ...` runs with the comment as arguments and fails.
 
 ## Permissions
 
