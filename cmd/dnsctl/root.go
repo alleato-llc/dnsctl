@@ -58,8 +58,9 @@ func runTUI() error {
 		return fmt.Errorf("creating DNS client: %w", err)
 	}
 
-	// Share one DNS client for reads and (in-process) privileged writes.
-	resolver := service.NewResolverService(dnsClient, service.NewDirectRunnerWithClient(dnsClient))
+	// Reads use the local client; privileged writes route via chooseRunner
+	// (in-process when root, else through the helper).
+	resolver := service.NewResolverService(dnsClient, chooseRunner())
 	model := tui.NewModel(cfg, resolver)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

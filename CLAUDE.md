@@ -20,9 +20,13 @@ This file provides context for Claude Code when working on this project.
 cmd/dnsctl/
 ├── main.go              # Entry point - calls Execute()
 ├── root.go              # Cobra root command; default (no subcommand) runs the TUI
+├── runner.go            # chooseRunner(): DirectRunner if root, else HelperClient
 └── hosts.go             # `dnsctl hosts` subcommands (list/get/add/set/rm)
 cmd/dnsctl-helper/
-└── main.go              # Privileged root daemon; executes privileged ops over a unix socket
+├── main.go              # Privileged root daemon; serves privileged ops over a unix socket
+├── peercred_darwin.go   # Peer-UID lookup via LOCAL_PEERCRED (authorization)
+└── peercred_other.go    # Non-macOS stub
+packaging/               # LaunchDaemon plist + install/uninstall scripts for the helper
 internal/
 ├── config/
 │   ├── config.go        # Config loading from ~/.config/dnsctl/config.yaml
@@ -87,12 +91,23 @@ implementations).
 ### Privileged helper (`cmd/dnsctl-helper`)
 
 The helper is a separate root daemon that executes privileged operations for
-unprivileged clients. It is the **trust boundary**: it re-validates every
-request (DNS servers must be valid IPs; hosts writes are restricted to an
-allow-listed path and the content is re-parsed/validated) and must never trust
-its caller. The serve loop and `dispatch` are factored out of `main` so they can
-be tested over a temp socket. Peer-UID authentication (LOCAL_PEERCRED) is a
-known TODO before shipping; today it relies on 0600 socket permissions.
+unprivileged clients. It is the **trust boundary**:
+
+- **Authorization**: it looks up the connecting peer's UID via `LOCAL_PEERCRED`
+  and accepts only root and UIDs passed via `--allow-uids` (the install script
+  authorizes the installing user).
+- **Validation**: DNS servers must be valid IPs; hosts writes are restricted to
+  the `--hosts-file` path and the content is re-parsed/validated before writing.
+
+The serve loop, `dispatch`, and `authorize` are factored out of `main` so they
+can be tested over a temp socket (the same-process peer UID makes the auth gate
+testable). `chooseRunner` in `cmd/dnsctl` selects DirectRunner (root) vs
+HelperClient (non-root); `DNSCTL_HELPER_SOCKET` overrides the socket path.
+
+The helper is installed as a LaunchDaemon via `make install-helper` (see
+`packaging/`). For notarized distribution the helper would need code-signing
+(and, for a bundled GUI, `SMAppService` registration) — not required for
+source/Homebrew installs.
 
 ## Key Patterns
 

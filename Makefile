@@ -1,4 +1,4 @@
-.PHONY: build build-helper build-darwin build-linux build-all install clean run test
+.PHONY: build build-helper build-darwin build-linux build-all install uninstall install-helper uninstall-helper clean run test
 
 BINARY_NAME=dnsctl
 HELPER_NAME=dnsctl-helper
@@ -34,6 +34,14 @@ uninstall:
 	@echo "Removing $(BINARY_NAME) from $(INSTALL_DIR)"
 	@sudo rm -f $(INSTALL_DIR)/$(BINARY_NAME)
 	@echo "Uninstalled successfully"
+
+# Install/remove the privileged helper LaunchDaemon (enables password-less
+# DNS/hosts changes for non-root dnsctl). Requires sudo.
+install-helper: build-helper
+	@sudo packaging/install-helper.sh $(BUILD_DIR)/$(HELPER_NAME)
+
+uninstall-helper:
+	@sudo packaging/uninstall-helper.sh
 
 clean:
 	@rm -rf $(BUILD_DIR)

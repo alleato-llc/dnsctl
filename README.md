@@ -177,6 +177,37 @@ write the current file is backed up to `<path>.dnsctl.bak`, and the new content
 is written atomically (temp file + rename) so an interrupted run can't corrupt
 `/etc/hosts`.
 
+## Privileged helper (password-less changes)
+
+Changing DNS settings and writing `/etc/hosts` require root. You can either run
+the mutating commands with `sudo`, or install the **dnsctl-helper** — a small
+root LaunchDaemon that performs the privileged work on your behalf so the CLI
+(and a future GUI) can make changes without `sudo` each time.
+
+```bash
+make build            # builds bin/dnsctl and bin/dnsctl-helper
+make install-helper   # installs + starts the helper (asks for sudo once)
+# ...later:
+make uninstall-helper
+```
+
+How it routes:
+
+- **Running as root** (`sudo dnsctl ...`): the change is performed in-process.
+- **Running unprivileged**: the change is forwarded to the helper over a
+  `0600` unix socket at `/var/run/dnsctl-helper.sock`. If the helper isn't
+  installed, write commands report a clear connection error (reads still work).
+
+Security model: the helper is the trust boundary. It authorizes the connecting
+user by UID (only root and the UID authorized at install time — your user — may
+drive it), restricts hosts writes to `/etc/hosts`, validates DNS server IPs, and
+re-parses/validates hosts content before writing. Set `DNSCTL_HELPER_SOCKET` to
+point the CLI at a non-default socket.
+
+> Note: for source/Homebrew installs the helper runs unsigned, which is fine
+> locally. Distributing a notarized app would additionally require code-signing
+> the helper (and, for a bundled GUI, registering it via `SMAppService`).
+
 ## Permissions
 
 Changing DNS settings on macOS requires appropriate permissions. You may need to:
@@ -187,6 +218,9 @@ Changing DNS settings on macOS requires appropriate permissions. You may need to
    ```
 
 2. Or grant your terminal Full Disk Access in **System Preferences > Privacy & Security > Full Disk Access**
+
+3. Or install the [privileged helper](#privileged-helper-password-less-changes)
+   for password-less changes without `sudo`.
 
 ## How It Works
 

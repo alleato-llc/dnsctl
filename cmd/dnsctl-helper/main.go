@@ -19,6 +19,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/nycjv321/dnsctl/internal/hosts"
 	"github.com/nycjv321/dnsctl/internal/ipc"
@@ -28,7 +30,13 @@ import (
 func main() {
 	socket := flag.String("socket", ipc.DefaultSocketPath, "unix socket path to listen on")
 	hostsPath := flag.String("hosts-file", hosts.DefaultPath, "the only path hosts writes are permitted to target")
+	allowUIDs := flag.String("allow-uids", "", "comma-separated UIDs permitted to drive the helper (root is always allowed)")
 	flag.Parse()
+
+	allowed, err := parseUIDs(*allowUIDs)
+	if err != nil {
+		log.Fatalf("parse --allow-uids: %v", err)
+	}
 
 	// Remove any stale socket from a previous run before binding.
 	if err := os.Remove(*socket); err != nil && !os.IsNotExist(err) {
@@ -43,8 +51,8 @@ func main() {
 		log.Fatalf("chmod socket: %v", err)
 	}
 
-	h := &handler{runner: service.NewDirectRunner(), allowedHostsPath: *hostsPath}
-	log.Printf("dnsctl-helper listening on %s (hosts writes limited to %s)", *socket, *hostsPath)
+	h := &handler{runner: service.NewDirectRunner(), allowedHostsPath: *hostsPath, allowedUIDs: allowed}
+	log.Printf("dnsctl-helper listening on %s (hosts writes limited to %s, allowed UIDs: %v)", *socket, *hostsPath, *allowUIDs)
 	if err := serve(ln, h); err != nil {
 		log.Fatalf("serve: %v", err)
 	}
@@ -54,6 +62,7 @@ func main() {
 type handler struct {
 	runner           service.PrivilegedRunner
 	allowedHostsPath string
+	allowedUIDs      map[uint32]bool // root (0) is always allowed
 }
 
 // serve accepts connections until the listener is closed, handling each in its
@@ -68,9 +77,15 @@ func serve(ln net.Listener, h *handler) error {
 	}
 }
 
-// handle reads one request, dispatches it, and writes one response.
+// handle authorizes the peer, then reads one request, dispatches it, and writes
+// one response.
 func (h *handler) handle(conn net.Conn) {
 	defer conn.Close()
+
+	if err := h.authorize(conn); err != nil {
+		_ = ipc.WriteResponse(conn, ipc.Response{Error: err.Error()})
+		return
+	}
 
 	var req ipc.Request
 	if err := ipc.ReadRequest(conn, &req); err != nil {
@@ -83,6 +98,19 @@ func (h *handler) handle(conn net.Conn) {
 		resp.Error = err.Error()
 	}
 	_ = ipc.WriteResponse(conn, resp)
+}
+
+// authorize rejects connections from UIDs that are neither root nor on the
+// allow list. This is the helper's access-control gate.
+func (h *handler) authorize(conn net.Conn) error {
+	uid, err := peerUID(conn)
+	if err != nil {
+		return fmt.Errorf("peer authentication failed: %w", err)
+	}
+	if uid == 0 || h.allowedUIDs[uid] {
+		return nil
+	}
+	return fmt.Errorf("unauthorized: uid %d is not permitted", uid)
 }
 
 // dispatch validates and executes a single request. This is the enforcement
@@ -113,6 +141,28 @@ func (h *handler) dispatch(req ipc.Request) error {
 	default:
 		return fmt.Errorf("unknown operation %q", req.Op)
 	}
+}
+
+// parseUIDs parses a comma-separated UID list (e.g. "501,502") into a set.
+// An empty string yields an empty set (only root will be authorized).
+func parseUIDs(s string) (map[uint32]bool, error) {
+	out := make(map[uint32]bool)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return out, nil
+	}
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.ParseUint(part, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid UID %q: %w", part, err)
+		}
+		out[uint32(n)] = true
+	}
+	return out, nil
 }
 
 // validateIPs ensures every requested DNS server is a valid IP address.

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchDaemon for dnsctl-helper. Placeholders (@...@) are filled in by
+  packaging/install-helper.sh at install time. LaunchDaemons run as root.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.github.nycjv321.dnsctl-helper</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>@HELPER_BIN@</string>
+        <string>--socket</string>
+        <string>@SOCKET@</string>
+        <string>--hosts-file</string>
+        <string>@HOSTS_FILE@</string>
+        <string>--allow-uids</string>
+        <string>@ALLOW_UIDS@</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardErrorPath</key>
+    <string>/var/log/dnsctl-helper.log</string>
+</dict>
+</plist>

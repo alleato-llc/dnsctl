@@ -128,11 +128,10 @@ func init() {
 	rootCmd.AddCommand(hostsCmd)
 }
 
-// hostsService builds the shared facade with an in-process privileged runner.
-// (A non-root CLI could swap in service.NewHelperClient() once the helper
-// exists; the command logic above is unaffected.)
+// hostsService builds the shared facade, routing privileged writes in-process
+// (root) or through the helper (non-root) via chooseRunner.
 func hostsService() *service.HostsService {
-	return service.NewHostsService(hostsFile, service.NewDirectRunner())
+	return service.NewHostsService(hostsFile, chooseRunner())
 }
 
 // applyOptions maps the shared write flags onto the service options.
