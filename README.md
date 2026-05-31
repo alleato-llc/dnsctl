@@ -246,12 +246,14 @@ An optional desktop GUI lives in [`gui/`](gui/), built with
 TUI, so all three share one core. The GUI is a **separate Go module** (its own
 `go.mod`) so the Wails/CGo dependency tree stays out of the main build.
 
-It's a System Settings-style window (light/dark aware) with two views:
+It's a System Settings-style window with:
 
 - **DNS Status** — read-only. Lists each network service with its current DNS
   servers (or "Automatic (DHCP)"), and marks the active/default-route service
   with an "Active" badge. dnsctl reads but never changes this configuration.
 - **Hosts** — add, view, and remove the dnsctl-managed `/etc/hosts` entries.
+- **Settings** (gear icon) — choose the appearance: Light, Dark, or System
+  (follow the OS). The choice is remembered between launches.
 
 ### Prerequisites
 

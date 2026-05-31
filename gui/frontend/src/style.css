@@ -1,3 +1,6 @@
+/* Light is the default. The dark palette is applied either by an explicit
+   theme choice ([data-theme="dark"]) or, when no choice is set, by the OS
+   preference. data-theme="light" needs no rule — it falls through to :root. */
 :root {
   --bg: #ececec;
   --sidebar-bg: rgba(246, 246, 248, 0.8);
@@ -13,8 +16,24 @@
   --focus-ring: rgba(0, 122, 255, 0.25);
 }
 
+/* Explicit dark choice. */
+:root[data-theme="dark"] {
+  --bg: #1e1e1e;
+  --sidebar-bg: rgba(40, 40, 42, 0.8);
+  --content-bg: #1e1e1e;
+  --text: #f5f5f7;
+  --text-secondary: #98989d;
+  --separator: rgba(255, 255, 255, 0.12);
+  --accent: #0a84ff;
+  --card-bg: #2c2c2e;
+  --row-hover: rgba(255, 255, 255, 0.06);
+  --danger: #ff453a;
+  --focus-ring: rgba(10, 132, 255, 0.35);
+}
+
+/* System: follow the OS only when the user hasn't picked a theme. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #1e1e1e;
     --sidebar-bg: rgba(40, 40, 42, 0.8);
     --content-bg: #1e1e1e;
@@ -93,6 +112,47 @@ body {
 .nav-item.active {
   background: var(--accent);
   color: var(--accent-text);
+}
+
+/* Pushes the gear/settings item to the bottom of the sidebar. */
+.sidebar-spacer {
+  flex: 1;
+}
+
+.nav-item.icon-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-item.icon-item svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* macOS-style segmented control */
+.segmented {
+  display: inline-flex;
+  background: var(--row-hover);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.segmented button {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 4px 14px;
+  border-radius: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--card-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 
 /* Content */

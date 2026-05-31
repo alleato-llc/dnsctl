@@ -83,11 +83,14 @@ unprivileged, so `guiapi.NewApp` uses `HelperClient` — install the helper firs
 RemoveHost` (editable), and read-only resolver methods `DNSStatus` (per-service
 config, flagging the active/default service), `Backend`, `ListServices`,
 `CurrentDNS`. The frontend (`gui/frontend/src/main.ts` + `style.css`) is a
-System-Settings-style sidebar with two views: **DNS Status** (read-only; shows
-each service's servers or "Automatic (DHCP)" and an "Active" badge on the
-default-route service — dnsctl never modifies resolver config here) and
-**Hosts** (the managed-entry editor). After adding an `App` method, re-run
-`wails generate module` to refresh the TypeScript bindings.
+System-Settings-style sidebar with three views: **DNS Status** (read-only;
+shows each service's servers or "Automatic (DHCP)" and an "Active" badge on the
+default-route service — dnsctl never modifies resolver config here), **Hosts**
+(the managed-entry editor), and **Settings** (gear icon; appearance Light/Dark/
+System). The theme is a frontend-only preference — `localStorage` + a
+`data-theme` attribute the stylesheet responds to (no Go binding). After adding
+an `App` method, re-run `wails generate module` to refresh the TypeScript
+bindings.
 
 ### Entry point / command layer
 

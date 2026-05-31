@@ -16,7 +16,7 @@ frontend (TypeScript)  ──Wails bindings──►  guiapi.App  ──►  ser
 
 ## Views
 
-A System Settings-style sidebar with two views (light/dark aware):
+A System Settings-style sidebar with:
 
 - **DNS Status** — read-only. One row per network service showing its current
   DNS servers or "Automatic (DHCP)", with an "Active" badge on the
@@ -24,6 +24,10 @@ A System Settings-style sidebar with two views (light/dark aware):
   resolver config here.
 - **Hosts** — add / view / remove the dnsctl-managed `/etc/hosts` entries.
   Backed by `App.ListHosts/AddHost/RemoveHost`.
+- **Settings** (gear icon) — appearance: Light / Dark / System. This is a
+  frontend-only preference stored in `localStorage` (no Go binding); it sets a
+  `data-theme` attribute that the stylesheet's palette responds to, and
+  "System" follows the OS via `prefers-color-scheme`.
 
 ## Privileges
 

@@ -23,7 +23,29 @@ interface ServiceDNS {
   primary: boolean;
 }
 
-type View = "dns" | "hosts";
+type View = "dns" | "hosts" | "settings";
+type Theme = "light" | "dark" | "system";
+
+// --- Theme ---
+
+const THEME_KEY = "dnsctl.theme";
+
+function getTheme(): Theme {
+  const t = localStorage.getItem(THEME_KEY);
+  return t === "light" || t === "dark" || t === "system" ? t : "system";
+}
+
+function applyTheme(theme: Theme): void {
+  const root = document.documentElement;
+  if (theme === "system") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", theme);
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+// Apply before rendering to avoid a flash of the wrong palette.
+applyTheme(getTheme());
+
+const GEAR_SVG = `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 5a3 3 0 100 6 3 3 0 000-6zm0 1.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3z"/><path d="M6.94 1.5a.9.9 0 01.9-.75h.32a.9.9 0 01.9.75l.12.74a4.6 4.6 0 011.06.61l.7-.28a.9.9 0 011.1.39l.16.28a.9.9 0 01-.2 1.15l-.58.47c.05.36.05.72 0 1.08l.58.47a.9.9 0 01.2 1.15l-.16.28a.9.9 0 01-1.1.39l-.7-.28c-.33.26-.69.46-1.06.61l-.12.74a.9.9 0 01-.9.75h-.32a.9.9 0 01-.9-.75l-.12-.74a4.6 4.6 0 01-1.06-.61l-.7.28a.9.9 0 01-1.1-.39l-.16-.28a.9.9 0 01.2-1.15l.58-.47a4.7 4.7 0 010-1.08l-.58-.47a.9.9 0 01-.2-1.15l.16-.28a.9.9 0 011.1-.39l.7.28c.33-.26.69-.46 1.06-.61l.12-.74z"/></svg>`;
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
@@ -31,6 +53,8 @@ app.innerHTML = `
     <div class="sidebar-title">dnsctl</div>
     <button class="nav-item" data-view="dns">DNS Status</button>
     <button class="nav-item" data-view="hosts">Hosts</button>
+    <div class="sidebar-spacer"></div>
+    <button class="nav-item icon-item" data-view="settings" title="Settings">${GEAR_SVG}Settings</button>
   </aside>
   <main class="content" id="content"></main>
 `;
@@ -45,7 +69,8 @@ function escapeHtml(s: string): string {
 function setView(view: View): void {
   navItems.forEach((n) => n.classList.toggle("active", n.dataset.view === view));
   if (view === "dns") void renderDNS();
-  else void renderHosts();
+  else if (view === "hosts") void renderHosts();
+  else renderSettings();
 }
 navItems.forEach((n) => n.addEventListener("click", () => setView(n.dataset.view as View)));
 
@@ -142,6 +167,35 @@ async function addHost(): Promise<void> {
     // Errors from the Go layer (validation, helper not installed, etc.).
     errEl.textContent = String(err);
   }
+}
+
+// --- Settings ---
+
+function renderSettings(): void {
+  const current = getTheme();
+  const opt = (value: Theme, label: string) =>
+    `<button data-theme="${value}" class="${value === current ? "active" : ""}">${label}</button>`;
+  content.innerHTML = `
+    <h1>Settings</h1>
+    <p class="subtitle">Preferences</p>
+    <div class="card">
+      <div class="row">
+        <span class="primary">Appearance</span>
+        <span class="secondary">Theme used by the dnsctl window</span>
+        <span class="spacer"></span>
+        <div class="segmented" id="theme-seg">
+          ${opt("light", "Light")}${opt("dark", "Dark")}${opt("system", "System")}
+        </div>
+      </div>
+    </div>`;
+
+  const seg = document.querySelector<HTMLDivElement>("#theme-seg")!;
+  seg.querySelectorAll<HTMLButtonElement>("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      applyTheme(btn.dataset.theme as Theme);
+      seg.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
+    });
+  });
 }
 
 setView("dns");
