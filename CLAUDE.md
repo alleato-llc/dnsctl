@@ -33,8 +33,13 @@ internal/
 │   └── mock.go          # Mock client for testing
 ├── hosts/
 │   ├── hosts.go         # Entry type, managed-block parser, CRUD, validation
-│   ├── store.go         # Atomic file read/write + backup
+│   ├── store.go         # Atomic file read/write + backup (WriteAtomic primitive)
 │   └── hosts_test.go    # Parser, CRUD, and store tests
+├── service/            # Privilege-agnostic facade shared by CLI/TUI/GUI
+│   ├── hosts.go         # HostsService: orchestrates load/validate/mutate/persist
+│   ├── privilege.go     # PrivilegedRunner interface + DirectRunner (in-process)
+│   ├── helper_client.go # HelperClient stub (forwards to root helper, TODO)
+│   └── hosts_test.go    # Service tests with a recording runner
 └── tui/
     ├── app.go           # Bubble Tea Model with Init/Update/View
     ├── app_test.go      # TUI logic tests
@@ -51,6 +56,25 @@ The binary uses [Cobra](https://github.com/spf13/cobra). The root command's
 Subcommands (currently `hosts`) provide headless, scriptable/LLM-friendly
 operations. New subcommands are added as files under `cmd/dnsctl/` that register
 themselves on `rootCmd` in an `init()`.
+
+### Service facade and the privilege seam
+
+`internal/service` is the shared, privilege-agnostic layer that CLI, TUI, and a
+future GUI all build on — frontends should call it rather than the domain
+packages directly. Its exported types use plain fields + JSON tags so they can
+double as the Wails (Go → TypeScript) binding surface.
+
+Operations that need root (changing resolver config, flushing the cache,
+writing the hosts file) go through the `PrivilegedRunner` interface — the single
+seam where privilege is acquired:
+
+- `DirectRunner` runs in-process; used by `sudo dnsctl` and (later) inside the
+  root helper daemon.
+- `HelperClient` (stub today) will forward operations over IPC to a privileged
+  helper at `cmd/dnsctl-helper`, for the unprivileged GUI and a non-root CLI.
+
+To add an operation: put orchestration in a `*Service` method, and if it has a
+root-only side effect, add it to `PrivilegedRunner` (and both implementations).
 
 ## Key Patterns
 

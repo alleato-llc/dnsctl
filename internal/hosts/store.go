@@ -37,18 +37,29 @@ func (s *Store) Load() (*Document, error) {
 }
 
 // Save backs up the current file then atomically replaces it with the rendered
-// document. The write is durable against partial writes: content goes to a
-// temp file in the same directory and is renamed into place.
+// document. It is a convenience wrapper over WriteAtomic.
 func (s *Store) Save(doc *Document) error {
+	return WriteAtomic(s.Path, doc.Render())
+}
+
+// WriteAtomic backs up the file at path (when it exists) then atomically
+// replaces it with content. Content is written to a temp file in the same
+// directory and renamed into place, so an interrupted write cannot corrupt the
+// target; the original file mode is preserved.
+//
+// This is the single privileged side effect for hosts editing: writing a
+// root-owned file such as /etc/hosts requires the calling process to be root,
+// so it is invoked through a PrivilegedRunner (see internal/service).
+func WriteAtomic(path string, content []byte) error {
 	mode := os.FileMode(0644)
-	if fi, err := os.Stat(s.Path); err == nil {
+	if fi, err := os.Stat(path); err == nil {
 		mode = fi.Mode().Perm()
-		if err := s.backup(); err != nil {
+		if err := backup(path); err != nil {
 			return err
 		}
 	}
 
-	dir := filepath.Dir(s.Path)
+	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".dnsctl-hosts-*")
 	if err != nil {
 		return fmt.Errorf("create temp file in %s: %w", dir, err)
@@ -56,7 +67,7 @@ func (s *Store) Save(doc *Document) error {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op once renamed
 
-	if _, err := tmp.Write(doc.Render()); err != nil {
+	if _, err := tmp.Write(content); err != nil {
 		tmp.Close()
 		return fmt.Errorf("write temp file: %w", err)
 	}
@@ -66,20 +77,20 @@ func (s *Store) Save(doc *Document) error {
 	if err := os.Chmod(tmpName, mode); err != nil {
 		return fmt.Errorf("chmod temp file: %w", err)
 	}
-	if err := os.Rename(tmpName, s.Path); err != nil {
-		return fmt.Errorf("replace %s: %w", s.Path, err)
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace %s: %w", path, err)
 	}
 	return nil
 }
 
-// backup copies the current file to "<path>.dnsctl.bak", overwriting any
+// backup copies the file at path to "<path>.dnsctl.bak", overwriting any
 // previous backup.
-func (s *Store) backup() error {
-	data, err := os.ReadFile(s.Path)
+func backup(path string) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read for backup: %w", err)
 	}
-	bak := s.Path + ".dnsctl.bak"
+	bak := path + ".dnsctl.bak"
 	if err := os.WriteFile(bak, data, 0644); err != nil {
 		return fmt.Errorf("write backup %s: %w", bak, err)
 	}

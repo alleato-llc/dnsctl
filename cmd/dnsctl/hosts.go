@@ -2,12 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"text/tabwriter"
 
-	"github.com/nycjv321/dnsctl/internal/dns"
 	"github.com/nycjv321/dnsctl/internal/hosts"
+	"github.com/nycjv321/dnsctl/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -38,11 +39,11 @@ var hostsListCmd = &cobra.Command{
 	Short: "List managed host entries",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		doc, err := hosts.NewStore(hostsFile).Load()
+		entries, err := hostsService().List()
 		if err != nil {
 			return err
 		}
-		return output(doc.List())
+		return output(entries)
 	},
 }
 
@@ -51,11 +52,10 @@ var hostsGetCmd = &cobra.Command{
 	Short: "Show the managed entry for a hostname",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		doc, err := hosts.NewStore(hostsFile).Load()
+		e, ok, err := hostsService().Get(args[0])
 		if err != nil {
 			return err
 		}
-		e, ok := doc.Get(args[0])
 		if !ok {
 			return fmt.Errorf("no managed entry for %q", args[0])
 		}
@@ -68,7 +68,15 @@ var hostsAddCmd = &cobra.Command{
 	Short: "Add a new host entry (fails if it already exists)",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return upsert(args[0], args[1], false)
+		entry := hosts.Entry{IP: args[1], Hostname: args[0], Aliases: hostsAliases, Comment: hostsComment}
+		content, err := hostsService().Add(entry, applyOptions())
+		if err != nil {
+			if errors.Is(err, service.ErrExists) {
+				return fmt.Errorf("%v (use `set` to update)", err)
+			}
+			return err
+		}
+		return printIfDryRun(content)
 	},
 }
 
@@ -77,7 +85,12 @@ var hostsSetCmd = &cobra.Command{
 	Short: "Add or update a host entry (idempotent)",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return upsert(args[0], args[1], true)
+		entry := hosts.Entry{IP: args[1], Hostname: args[0], Aliases: hostsAliases, Comment: hostsComment}
+		content, err := hostsService().Set(entry, applyOptions())
+		if err != nil {
+			return err
+		}
+		return printIfDryRun(content)
 	},
 }
 
@@ -87,15 +100,14 @@ var hostsRemoveCmd = &cobra.Command{
 	Short:   "Remove a managed host entry",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store := hosts.NewStore(hostsFile)
-		doc, err := store.Load()
+		content, err := hostsService().Remove(args[0], applyOptions())
 		if err != nil {
+			if errors.Is(err, service.ErrNotFound) {
+				return fmt.Errorf("no managed entry for %q", args[0])
+			}
 			return err
 		}
-		if !doc.Remove(args[0]) {
-			return fmt.Errorf("no managed entry for %q", args[0])
-		}
-		return commit(store, doc)
+		return printIfDryRun(content)
 	},
 }
 
@@ -116,47 +128,24 @@ func init() {
 	rootCmd.AddCommand(hostsCmd)
 }
 
-// upsert adds or sets an entry. When allowExisting is false (add), an existing
-// hostname is an error.
-func upsert(hostname, ip string, allowExisting bool) error {
-	store := hosts.NewStore(hostsFile)
-	doc, err := store.Load()
-	if err != nil {
-		return err
-	}
-
-	if !allowExisting {
-		if _, exists := doc.Get(hostname); exists {
-			return fmt.Errorf("entry for %q already exists (use `set` to update)", hostname)
-		}
-	}
-
-	entry := hosts.Entry{IP: ip, Hostname: hostname, Aliases: hostsAliases, Comment: hostsComment}
-	if err := entry.Validate(); err != nil {
-		return err
-	}
-	doc.Set(entry)
-	return commit(store, doc)
+// hostsService builds the shared facade with an in-process privileged runner.
+// (A non-root CLI could swap in service.NewHelperClient() once the helper
+// exists; the command logic above is unaffected.)
+func hostsService() *service.HostsService {
+	return service.NewHostsService(hostsFile, service.NewDirectRunner())
 }
 
-// commit writes the document (or prints it under --dry-run) and optionally
-// flushes the DNS cache.
-func commit(store *hosts.Store, doc *hosts.Document) error {
+// applyOptions maps the shared write flags onto the service options.
+func applyOptions() service.ApplyOptions {
+	return service.ApplyOptions{DryRun: hostsDryRun, Flush: hostsFlush}
+}
+
+// printIfDryRun writes the previewed file content to stdout under --dry-run;
+// successful writes produce no output.
+func printIfDryRun(content []byte) error {
 	if hostsDryRun {
-		os.Stdout.Write(doc.Render())
-		return nil
-	}
-	if err := store.Save(doc); err != nil {
+		_, err := os.Stdout.Write(content)
 		return err
-	}
-	if hostsFlush {
-		client, err := dns.NewClient()
-		if err != nil {
-			return fmt.Errorf("flush: %w", err)
-		}
-		if err := client.FlushCache(); err != nil {
-			return fmt.Errorf("flush: %w", err)
-		}
 	}
 	return nil
 }
