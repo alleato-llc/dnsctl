@@ -226,6 +226,13 @@ TUI, so all three share one core. The GUI is a **separate Go module** (its own
   go install github.com/wailsapp/wails/v2/cmd/wails@latest
   wails doctor    # verifies system dependencies
   ```
+  `go install` places the binary in Go's bin directory (`$(go env GOPATH)/bin`,
+  typically `~/go/bin`). If `wails doctor` reports `command not found`, that
+  directory isn't on your `PATH`. Add it (zsh):
+  ```bash
+  echo 'export PATH="$PATH:$HOME/go/bin"' >> ~/.zshrc
+  source ~/.zshrc
+  ```
 - The privileged helper, since the GUI runs unprivileged and forwards changes
   to it:
   ```bash
