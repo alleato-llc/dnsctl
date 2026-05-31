@@ -196,15 +196,16 @@ make uninstall-helper
 How it routes:
 
 - **Running as root** (`sudo dnsctl ...`): the change is performed in-process.
-- **Running unprivileged**: the change is forwarded to the helper over a
-  `0600` unix socket at `/var/run/dnsctl-helper.sock`. If the helper isn't
-  installed, write commands report a clear connection error (reads still work).
+- **Running unprivileged**: the change is forwarded to the helper over a unix
+  socket at `/var/run/dnsctl-helper.sock`. If the helper isn't installed, write
+  commands report a clear connection error (reads still work).
 
-Security model: the helper is the trust boundary. It authorizes the connecting
-user by UID (only root and the UID authorized at install time — your user — may
-drive it), restricts hosts writes to `/etc/hosts`, validates DNS server IPs, and
-re-parses/validates hosts content before writing. Set `DNSCTL_HELPER_SOCKET` to
-point the CLI at a non-default socket.
+Security model: the helper is the trust boundary. The socket is world-
+connectable, and access is gated by a **peer-UID check** (`LOCAL_PEERCRED`) —
+only root and the UID authorized at install time (your user) may drive it. It
+restricts hosts writes to `/etc/hosts`, validates DNS server IPs, and re-parses/
+validates hosts content before writing. Set `DNSCTL_HELPER_SOCKET` to point the
+CLI at a non-default socket.
 
 > Note: for source/Homebrew installs the helper runs unsigned, which is fine
 > locally. Distributing a notarized app would additionally require code-signing

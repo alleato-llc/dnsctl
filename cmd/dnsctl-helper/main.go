@@ -2,15 +2,14 @@
 // root-only operations on behalf of unprivileged clients (the GUI, a non-root
 // CLI). Clients talk to it over a unix socket using the internal/ipc protocol.
 //
-// SECURITY: this process runs as root and is the trust boundary. It must
-// re-validate and authorize every request and never trust its caller:
+// SECURITY: this process runs as root and is the trust boundary. It
+// re-validates and authorizes every request and never trusts its caller:
+//   - the connecting peer's UID is checked (LOCAL_PEERCRED); only root and
+//     UIDs passed via --allow-uids may drive the helper. The socket itself is
+//     world-connectable, so this check — not file permissions — is the gate;
 //   - hosts writes are restricted to an allow-listed path and the content is
 //     re-parsed and validated;
 //   - DNS server values are validated as IPs.
-//
-// TODO(security): authenticate the connecting peer's UID before acting
-// (LOCAL_PEERCRED on darwin) so only permitted users can drive the helper.
-// Until that lands, rely on the 0600 socket permissions.
 package main
 
 import (
@@ -47,7 +46,11 @@ func main() {
 		log.Fatalf("listen on %s: %v", *socket, err)
 	}
 	defer ln.Close()
-	if err := os.Chmod(*socket, 0600); err != nil {
+	// The socket must be connectable by the unprivileged users the helper
+	// serves; access control is enforced by the peer-UID check in authorize(),
+	// not by file permissions. Connecting requires write permission on the
+	// socket, so make it world-connectable (0666).
+	if err := os.Chmod(*socket, 0666); err != nil {
 		log.Fatalf("chmod socket: %v", err)
 	}
 

@@ -9,9 +9,9 @@ import (
 	"io"
 )
 
-// DefaultSocketPath is where the helper listens by default. It lives under a
-// root-writable directory; the socket is created with 0600 so only root (the
-// helper) and processes it explicitly authorizes can use it.
+// DefaultSocketPath is where the helper listens by default. The socket is
+// world-connectable; access control is enforced by the helper's peer-UID check
+// (LOCAL_PEERCRED), not by file permissions.
 const DefaultSocketPath = "/var/run/dnsctl-helper.sock"
 
 // Op identifies a privileged operation.
