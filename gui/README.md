@@ -14,6 +14,19 @@ frontend (TypeScript)  ──Wails bindings──►  guiapi.App  ──►  ser
                                                                             └─ unix socket ─► dnsctl-helper (root)
 ```
 
+## Views
+
+A System Settings-style sidebar with two views (light/dark aware):
+
+- **DNS Status** — read-only. One row per network service showing its current
+  DNS servers or "Automatic (DHCP)", with an "Active" badge on the
+  default-route service. Backed by `App.DNSStatus()`; dnsctl never modifies
+  resolver config here.
+- **Hosts** — add / view / remove the dnsctl-managed `/etc/hosts` entries.
+  Backed by `App.ListHosts/AddHost/RemoveHost`.
+
+## Privileges
+
 The GUI runs **unprivileged** (never with `sudo` — a GUI app can't elevate
 itself), so privileged changes are forwarded to the `dnsctl-helper` daemon. The
 helper is therefore **required** for the GUI; install it first or writes will

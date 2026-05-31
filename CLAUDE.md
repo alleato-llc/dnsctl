@@ -79,6 +79,16 @@ Building the GUI needs the Wails CLI + npm (see `gui/README.md`); bindings under
 unprivileged, so `guiapi.NewApp` uses `HelperClient` — install the helper first
 (`make install-helper`).
 
+`App` methods are the frontend's binding surface: `ListHosts/AddHost/SetHost/
+RemoveHost` (editable), and read-only resolver methods `DNSStatus` (per-service
+config, flagging the active/default service), `Backend`, `ListServices`,
+`CurrentDNS`. The frontend (`gui/frontend/src/main.ts` + `style.css`) is a
+System-Settings-style sidebar with two views: **DNS Status** (read-only; shows
+each service's servers or "Automatic (DHCP)" and an "Active" badge on the
+default-route service — dnsctl never modifies resolver config here) and
+**Hosts** (the managed-entry editor). After adding an `App` method, re-run
+`wails generate module` to refresh the TypeScript bindings.
+
 ### Entry point / command layer
 
 The binary uses [Cobra](https://github.com/spf13/cobra). The root command's
@@ -89,10 +99,10 @@ themselves on `rootCmd` in an `init()`.
 
 ### Service facade and the privilege seam
 
-`internal/service` is the shared, privilege-agnostic layer that CLI, TUI, and a
-future GUI all build on — frontends should call it rather than the domain
-packages directly. Its exported types use plain fields + JSON tags so they can
-double as the Wails (Go → TypeScript) binding surface.
+`internal/service` is the shared, privilege-agnostic layer that the CLI, TUI,
+and GUI all build on — frontends should call it rather than the domain packages
+directly. Its exported types use plain fields + JSON tags so they can double as
+the Wails (Go → TypeScript) binding surface.
 
 Operations that need root (changing resolver config, flushing the cache,
 writing the hosts file) go through the `PrivilegedRunner` interface — the single
@@ -175,6 +185,12 @@ All DNS operations are in `internal/dns/macos.go`:
 - `SetDNSServers(service, servers)` - Set DNS servers
 - `ClearDNSServers(service)` - Clear DNS (revert to DHCP)
 - `FlushCache()` - Flush DNS cache
+
+`macOSClient` also has `PrimaryService()` (active/default-route service, via
+`route` + `networksetup -listnetworkserviceorder`). It is **not** on the `Client`
+interface — it's an optional capability discovered by type assertion
+(`primaryServiceProvider` in `internal/service`), so other backends needn't
+implement it; `ResolverService.PrimaryService()` returns `""` when unavailable.
 
 ### /etc/hosts Management
 
