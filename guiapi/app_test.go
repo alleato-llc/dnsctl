@@ -78,6 +78,36 @@ func TestApp_AddHostValidationError(t *testing.T) {
 	}
 }
 
+func TestApp_DNSStatus(t *testing.T) {
+	runner := &fakeRunner{}
+	mockDNS := dns.NewMockClient() // services: Wi-Fi, Ethernet
+	mockDNS.DNSServers["Wi-Fi"] = []string{"1.1.1.1", "1.0.0.1"}
+	// Ethernet left empty -> should report DHCP.
+	app := New(
+		service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), runner),
+		service.NewResolverService(mockDNS, runner),
+	)
+
+	status, err := app.DNSStatus()
+	if err != nil {
+		t.Fatalf("DNSStatus: %v", err)
+	}
+	if len(status) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(status))
+	}
+
+	byName := map[string]ServiceDNS{}
+	for _, s := range status {
+		byName[s.Service] = s
+	}
+	if wifi := byName["Wi-Fi"]; wifi.DHCP || len(wifi.Servers) != 2 {
+		t.Errorf("Wi-Fi: expected 2 manual servers, got %+v", wifi)
+	}
+	if eth := byName["Ethernet"]; !eth.DHCP || len(eth.Servers) != 0 {
+		t.Errorf("Ethernet: expected DHCP/no servers, got %+v", eth)
+	}
+}
+
 func TestApp_ResolverRoutesThroughRunner(t *testing.T) {
 	app, runner := newTestApp(t)
 

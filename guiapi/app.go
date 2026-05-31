@@ -77,7 +77,37 @@ func (a *App) RemoveHost(hostname string) error {
 	return err
 }
 
-// --- Resolver ---
+// --- Resolver (read-only status) ---
+
+// ServiceDNS is the current resolver configuration for one network service.
+// dnsctl does not modify this; it is surfaced read-only so the user can see
+// what the system is using.
+type ServiceDNS struct {
+	Service string   `json:"service"`
+	Servers []string `json:"servers"`
+	DHCP    bool     `json:"dhcp"` // true when no manual servers are set (automatic/DHCP)
+}
+
+// DNSStatus returns the current DNS configuration for every network service, in
+// one call, for a read-only status view.
+func (a *App) DNSStatus() ([]ServiceDNS, error) {
+	if a.resolver == nil {
+		return nil, a.resolverErr
+	}
+	services, err := a.resolver.ListServices()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ServiceDNS, 0, len(services))
+	for _, svc := range services {
+		servers, err := a.resolver.CurrentDNS(svc)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ServiceDNS{Service: svc, Servers: servers, DHCP: len(servers) == 0})
+	}
+	return out, nil
+}
 
 // ListServices returns the available network services/interfaces.
 func (a *App) ListServices() ([]string, error) {

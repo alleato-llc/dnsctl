@@ -4,66 +4,142 @@
 // frontend/wailsjs/ on `wails dev` / `wails generate module`. They do not exist
 // until then (the directory is gitignored), so type-checking this file requires
 // running Wails once.
-import { ListHosts, AddHost, RemoveHost } from "../wailsjs/go/guiapi/App";
+import "./style.css";
+import {
+  DNSStatus,
+  Backend,
+  ListHosts,
+  AddHost,
+  RemoveHost,
+} from "../wailsjs/go/guiapi/App";
 import { hosts } from "../wailsjs/go/models";
+
+// Mirrors guiapi.ServiceDNS. Typed locally so the read path doesn't depend on
+// the generated model namespace.
+interface ServiceDNS {
+  service: string;
+  servers: string[];
+  dhcp: boolean;
+}
+
+type View = "dns" | "hosts";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
-  <h1>dnsctl — hosts</h1>
-  <form id="add-form">
-    <input id="hostname" placeholder="hostname (e.g. app.local)" required />
-    <input id="ip" placeholder="IP (e.g. 127.0.0.1)" required />
-    <input id="comment" placeholder="comment (optional)" />
-    <button type="submit">Add</button>
-  </form>
-  <p id="error" style="color:#c00"></p>
-  <table>
-    <thead><tr><th>IP</th><th>Hostname</th><th>Comment</th><th></th></tr></thead>
-    <tbody id="entries"></tbody>
-  </table>
+  <aside class="sidebar">
+    <div class="sidebar-title">dnsctl</div>
+    <button class="nav-item" data-view="dns">DNS Status</button>
+    <button class="nav-item" data-view="hosts">Hosts</button>
+  </aside>
+  <main class="content" id="content"></main>
 `;
 
-const errorEl = document.querySelector<HTMLParagraphElement>("#error")!;
-const tbody = document.querySelector<HTMLTableSectionElement>("#entries")!;
+const content = document.querySelector<HTMLElement>("#content")!;
+const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>(".nav-item"));
 
-async function refresh(): Promise<void> {
-  errorEl.textContent = "";
-  const entries = await ListHosts();
-  tbody.innerHTML = "";
-  for (const e of entries) {
-    const row = document.createElement("tr");
-    row.innerHTML = `<td>${e.ip}</td><td>${e.hostname}</td><td>${e.comment ?? ""}</td>`;
-    const cell = document.createElement("td");
-    const btn = document.createElement("button");
-    btn.textContent = "Remove";
-    btn.addEventListener("click", async () => {
-      await RemoveHost(e.hostname);
-      await refresh();
-    });
-    cell.appendChild(btn);
-    row.appendChild(cell);
-    tbody.appendChild(row);
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+}
+
+function setView(view: View): void {
+  navItems.forEach((n) => n.classList.toggle("active", n.dataset.view === view));
+  if (view === "dns") void renderDNS();
+  else void renderHosts();
+}
+navItems.forEach((n) => n.addEventListener("click", () => setView(n.dataset.view as View)));
+
+// --- DNS Status (read-only) ---
+
+async function renderDNS(): Promise<void> {
+  content.innerHTML = `<h1>DNS Status</h1><p class="subtitle">Loading…</p>`;
+  try {
+    const backend = await Backend();
+    const rows = (await DNSStatus()) as unknown as ServiceDNS[];
+    const list = rows
+      .map(
+        (r) => `
+        <div class="row">
+          <span class="primary">${escapeHtml(r.service)}</span>
+          <span class="spacer"></span>
+          ${
+            r.dhcp
+              ? `<span class="badge">Automatic (DHCP)</span>`
+              : `<span class="secondary mono">${r.servers.map(escapeHtml).join(", ")}</span>`
+          }
+        </div>`
+      )
+      .join("");
+    content.innerHTML = `
+      <h1>DNS Status</h1>
+      <p class="subtitle">Read-only — current system resolver configuration via ${escapeHtml(backend)}</p>
+      <div class="card">${list || `<div class="empty">No network services found.</div>`}</div>`;
+  } catch (err) {
+    content.innerHTML = `<h1>DNS Status</h1><p class="error">${escapeHtml(String(err))}</p>`;
   }
 }
 
-document.querySelector<HTMLFormElement>("#add-form")!.addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  errorEl.textContent = "";
-  const entry = new hosts.Entry({
-    hostname: (document.querySelector<HTMLInputElement>("#hostname")!).value,
-    ip: (document.querySelector<HTMLInputElement>("#ip")!).value,
-    comment: (document.querySelector<HTMLInputElement>("#comment")!).value || undefined,
-  });
+// --- Hosts (editable) ---
+
+async function renderHosts(): Promise<void> {
+  content.innerHTML = `
+    <h1>Hosts</h1>
+    <p class="subtitle">dnsctl-managed entries in /etc/hosts</p>
+    <div class="toolbar">
+      <input id="h-hostname" placeholder="hostname (app.local)" />
+      <input id="h-ip" placeholder="IP (127.0.0.1)" />
+      <input id="h-comment" placeholder="comment (optional)" />
+      <button class="btn primary" id="h-add">Add</button>
+    </div>
+    <p class="error" id="h-error"></p>
+    <div class="card" id="h-list"></div>`;
+  document.querySelector<HTMLButtonElement>("#h-add")!.addEventListener("click", () => void addHost());
+  await refreshHosts();
+}
+
+async function refreshHosts(): Promise<void> {
+  const listEl = document.querySelector<HTMLDivElement>("#h-list")!;
+  const entries = await ListHosts();
+  if (!entries.length) {
+    listEl.innerHTML = `<div class="empty">No managed entries yet.</div>`;
+    return;
+  }
+  listEl.innerHTML = "";
+  for (const e of entries) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `
+      <span class="primary mono">${escapeHtml(e.hostname)}</span>
+      <span class="secondary mono">${escapeHtml(e.ip)}</span>
+      ${e.comment ? `<span class="badge">${escapeHtml(e.comment)}</span>` : ``}
+      <span class="spacer"></span>`;
+    const btn = document.createElement("button");
+    btn.className = "btn danger";
+    btn.textContent = "Remove";
+    btn.addEventListener("click", async () => {
+      await RemoveHost(e.hostname);
+      await refreshHosts();
+    });
+    row.appendChild(btn);
+    listEl.appendChild(row);
+  }
+}
+
+async function addHost(): Promise<void> {
+  const errEl = document.querySelector<HTMLParagraphElement>("#h-error")!;
+  errEl.textContent = "";
+  const hostname = document.querySelector<HTMLInputElement>("#h-hostname")!.value.trim();
+  const ip = document.querySelector<HTMLInputElement>("#h-ip")!.value.trim();
+  const comment = document.querySelector<HTMLInputElement>("#h-comment")!.value.trim();
   try {
-    await AddHost(entry);
-    (document.querySelector<HTMLFormElement>("#add-form")!).reset();
-    await refresh();
+    await AddHost(new hosts.Entry({ hostname, ip, comment: comment || undefined }));
+    document.querySelector<HTMLInputElement>("#h-hostname")!.value = "";
+    document.querySelector<HTMLInputElement>("#h-ip")!.value = "";
+    document.querySelector<HTMLInputElement>("#h-comment")!.value = "";
+    await refreshHosts();
   } catch (err) {
     // Errors from the Go layer (validation, helper not installed, etc.).
-    errorEl.textContent = String(err);
+    errEl.textContent = String(err);
   }
-});
+}
 
-refresh().catch((err) => {
-  errorEl.textContent = String(err);
-});
+setView("dns");
