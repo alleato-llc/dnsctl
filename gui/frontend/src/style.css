@@ -156,6 +156,11 @@ h1 {
   white-space: nowrap;
 }
 
+.badge.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
 .mono {
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
 }

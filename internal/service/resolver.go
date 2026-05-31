@@ -31,6 +31,22 @@ func (s *ResolverService) Backend() string {
 	return s.client.Name()
 }
 
+// primaryServiceProvider is implemented by DNS clients that can report the
+// active (default-route) network service. Backends that can't simply don't
+// implement it.
+type primaryServiceProvider interface {
+	PrimaryService() (string, error)
+}
+
+// PrimaryService returns the active/default network service, or "" if the
+// backend can't determine one.
+func (s *ResolverService) PrimaryService() (string, error) {
+	if p, ok := s.client.(primaryServiceProvider); ok {
+		return p.PrimaryService()
+	}
+	return "", nil
+}
+
 // Set applies specific DNS servers to a network service.
 func (s *ResolverService) Set(service string, servers []string) error {
 	return s.runner.SetDNS(service, servers)

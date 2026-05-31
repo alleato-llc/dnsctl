@@ -82,6 +82,7 @@ func TestApp_DNSStatus(t *testing.T) {
 	runner := &fakeRunner{}
 	mockDNS := dns.NewMockClient() // services: Wi-Fi, Ethernet
 	mockDNS.DNSServers["Wi-Fi"] = []string{"1.1.1.1", "1.0.0.1"}
+	mockDNS.Primary = "Wi-Fi"
 	// Ethernet left empty -> should report DHCP.
 	app := New(
 		service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), runner),
@@ -100,11 +101,11 @@ func TestApp_DNSStatus(t *testing.T) {
 	for _, s := range status {
 		byName[s.Service] = s
 	}
-	if wifi := byName["Wi-Fi"]; wifi.DHCP || len(wifi.Servers) != 2 {
-		t.Errorf("Wi-Fi: expected 2 manual servers, got %+v", wifi)
+	if wifi := byName["Wi-Fi"]; wifi.DHCP || len(wifi.Servers) != 2 || !wifi.Primary {
+		t.Errorf("Wi-Fi: expected 2 manual servers and Primary=true, got %+v", wifi)
 	}
-	if eth := byName["Ethernet"]; !eth.DHCP || len(eth.Servers) != 0 {
-		t.Errorf("Ethernet: expected DHCP/no servers, got %+v", eth)
+	if eth := byName["Ethernet"]; !eth.DHCP || len(eth.Servers) != 0 || eth.Primary {
+		t.Errorf("Ethernet: expected DHCP/no servers and Primary=false, got %+v", eth)
 	}
 }
 

@@ -20,6 +20,7 @@ interface ServiceDNS {
   service: string;
   servers: string[];
   dhcp: boolean;
+  primary: boolean;
 }
 
 type View = "dns" | "hosts";
@@ -60,6 +61,7 @@ async function renderDNS(): Promise<void> {
         (r) => `
         <div class="row">
           <span class="primary">${escapeHtml(r.service)}</span>
+          ${r.primary ? `<span class="badge active">Active</span>` : ``}
           <span class="spacer"></span>
           ${
             r.dhcp

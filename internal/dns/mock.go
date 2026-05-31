@@ -11,6 +11,7 @@ type MockClient struct {
 	// Configurable responses
 	Services   []string
 	DNSServers map[string][]string
+	Primary    string // service reported as the active/default one
 
 	// Error injection
 	ListError  error
@@ -92,4 +93,10 @@ func (m *MockClient) FlushCache() error {
 // Name returns the mock client name.
 func (m *MockClient) Name() string {
 	return "mock"
+}
+
+// PrimaryService returns the configured active/default service. It implements
+// the optional primary-service capability used by ResolverService.
+func (m *MockClient) PrimaryService() (string, error) {
+	return m.Primary, nil
 }

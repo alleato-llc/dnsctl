@@ -99,6 +99,61 @@ func (c *macOSClient) ClearDNSServers(service string) error {
 	return nil
 }
 
+// PrimaryService returns the network service that currently carries the default
+// route (the "active" interface) — e.g. "Wi-Fi". It resolves the default
+// route's interface, then maps that interface to its service name.
+func (c *macOSClient) PrimaryService() (string, error) {
+	iface, err := defaultRouteInterface()
+	if err != nil {
+		return "", err
+	}
+	return serviceForInterface(iface)
+}
+
+// defaultRouteInterface returns the interface name (e.g. "en0") for the default
+// route.
+func defaultRouteInterface() (string, error) {
+	output, err := exec.Command("route", "-n", "get", "default").Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get default route: %w", err)
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "interface:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "interface:")), nil
+		}
+	}
+	return "", fmt.Errorf("no default route interface found")
+}
+
+// serviceForInterface maps an interface name (e.g. "en0") to its network
+// service name (e.g. "Wi-Fi") using the service order listing.
+func serviceForInterface(iface string) (string, error) {
+	output, err := exec.Command("networksetup", "-listnetworkserviceorder").Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to list network service order: %w", err)
+	}
+
+	// The listing alternates a "(N) Service Name" line with a
+	// "(Hardware Port: ..., Device: enX)" line. Track the most recent name and
+	// return it when its hardware line names our interface.
+	var currentName string
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.Contains(line, "Hardware Port"):
+			if strings.Contains(line, "Device: "+iface+")") {
+				return currentName, nil
+			}
+		case strings.HasPrefix(line, "("):
+			if idx := strings.Index(line, ") "); idx != -1 {
+				currentName = strings.TrimSpace(line[idx+2:])
+			}
+		}
+	}
+	return "", fmt.Errorf("no network service found for interface %s", iface)
+}
+
 // FlushCache flushes the DNS cache.
 func (c *macOSClient) FlushCache() error {
 	cmd := exec.Command("dscacheutil", "-flushcache")

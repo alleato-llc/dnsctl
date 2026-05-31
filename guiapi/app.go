@@ -85,7 +85,8 @@ func (a *App) RemoveHost(hostname string) error {
 type ServiceDNS struct {
 	Service string   `json:"service"`
 	Servers []string `json:"servers"`
-	DHCP    bool     `json:"dhcp"` // true when no manual servers are set (automatic/DHCP)
+	DHCP    bool     `json:"dhcp"`    // true when no manual servers are set (automatic/DHCP)
+	Primary bool     `json:"primary"` // true for the active (default-route) service
 }
 
 // DNSStatus returns the current DNS configuration for every network service, in
@@ -98,13 +99,20 @@ func (a *App) DNSStatus() ([]ServiceDNS, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Best-effort: if the backend can't report a primary, none is flagged.
+	primary, _ := a.resolver.PrimaryService()
 	out := make([]ServiceDNS, 0, len(services))
 	for _, svc := range services {
 		servers, err := a.resolver.CurrentDNS(svc)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, ServiceDNS{Service: svc, Servers: servers, DHCP: len(servers) == 0})
+		out = append(out, ServiceDNS{
+			Service: svc,
+			Servers: servers,
+			DHCP:    len(servers) == 0,
+			Primary: primary != "" && svc == primary,
+		})
 	}
 	return out, nil
 }
