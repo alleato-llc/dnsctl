@@ -1,0 +1,41 @@
+#!/bin/sh
+#
+# commit-msg hook — validates Conventional Commits format
+#
+# Expected format: <type>[optional scope][optional !]: <description>
+#
+# Install: ./scripts/setup-hooks.sh
+
+# Extract first non-comment, non-empty line from the commit message
+msg=$(sed '/^#/d;/^$/d' "$1" | head -n 1)
+
+# Allow empty (will be caught by git itself)
+if [ -z "$msg" ]; then
+    exit 0
+fi
+
+# Allow merge commits and reverts
+case "$msg" in
+    Merge\ *) exit 0 ;;
+    Revert\ \"*) exit 0 ;;
+esac
+
+# Validate against Conventional Commits pattern
+if echo "$msg" | grep -qE '^(feat|fix|docs|chore|ci|test|refactor|perf|build|style|revert)(\(.+\))?\!?: .+'; then
+    exit 0
+fi
+
+echo >&2 "ERROR: commit message does not follow Conventional Commits format."
+echo >&2 ""
+echo >&2 "  Invalid: $msg"
+echo >&2 ""
+echo >&2 "  Expected: <type>[optional scope][optional !]: <description>"
+echo >&2 ""
+echo >&2 "  Types: feat fix docs chore ci test refactor perf build style revert"
+echo >&2 ""
+echo >&2 "  Examples:"
+echo >&2 "    feat: add ALAC encoding profile"
+echo >&2 "    fix(parser): handle edge case"
+echo >&2 "    feat!: new API"
+echo >&2 "    docs(readme): update install instructions"
+exit 1

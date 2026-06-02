@@ -177,6 +177,16 @@ After merging a release PR:
    - `dnsctl-linux-amd64`
    - `dnsctl-linux-arm64`
 
+## Local Hook Setup
+
+A `commit-msg` git hook validates that commit messages follow Conventional Commits format before they reach the remote. Run the setup script once after cloning:
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+This sets `core.hooksPath` to the `hooks/` directory in the repository. The hook rejects messages that don't match `<type>[scope][!]: <description>` and allows merge/revert commits through unchanged.
+
 ## Troubleshooting
 
 ### Release PR Not Created
