@@ -22,13 +22,14 @@ type App struct {
 	runner      service.PrivilegedRunner
 	hosts       *service.HostsService
 	resolver    *service.ResolverService
+	profiles    *service.ProfileService
 	resolverErr error // set when no DNS backend is available; resolver methods report it
 }
 
 // New builds an App from an already-constructed runner and services (used in
 // tests and by callers that want to choose the runner).
-func New(runner service.PrivilegedRunner, hostsSvc *service.HostsService, resolver *service.ResolverService) *App {
-	return &App{runner: runner, hosts: hostsSvc, resolver: resolver}
+func New(runner service.PrivilegedRunner, hostsSvc *service.HostsService, resolver *service.ResolverService, profiles *service.ProfileService) *App {
+	return &App{runner: runner, hosts: hostsSvc, resolver: resolver, profiles: profiles}
 }
 
 // NewApp builds the production App: privileged operations are forwarded to the
@@ -46,6 +47,9 @@ func NewApp() *App {
 	} else {
 		app.resolver = service.NewResolverService(client, runner)
 	}
+	// Profiles read/edit the user config unprivileged; applying a profile uses
+	// the resolver (nil when no DNS backend, in which case Apply reports it).
+	app.profiles = service.NewProfileService("", app.resolver)
 	return app
 }
 
@@ -191,4 +195,27 @@ func (a *App) Backend() string {
 		return "unavailable"
 	}
 	return a.resolver.Backend()
+}
+
+// --- Profiles ---
+
+// ListProfiles returns the configured DNS profiles.
+func (a *App) ListProfiles() ([]service.Profile, error) {
+	return a.profiles.List()
+}
+
+// ApplyProfile switches a network service to a profile. An empty service falls
+// back to the config default, then the active service. Needs the helper.
+func (a *App) ApplyProfile(name, networkService string) error {
+	return a.profiles.Apply(name, networkService)
+}
+
+// SaveProfile creates or updates a profile definition (writes the user config).
+func (a *App) SaveProfile(p service.Profile) error {
+	return a.profiles.Save(p)
+}
+
+// DeleteProfile removes a profile definition (writes the user config).
+func (a *App) DeleteProfile(name string) error {
+	return a.profiles.Delete(name)
 }

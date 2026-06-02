@@ -8,13 +8,21 @@ import "./style.css";
 import {
   DNSStatus,
   Backend,
+  ListServices,
+  SetDNS,
+  ClearDNS,
+  FlushDNS,
   ListHosts,
   ListSystemHosts,
   AddHost,
   RemoveHost,
+  ListProfiles,
+  ApplyProfile,
+  SaveProfile,
+  DeleteProfile,
   HelperStatus,
 } from "../wailsjs/go/guiapi/App";
-import { hosts } from "../wailsjs/go/models";
+import { hosts, service } from "../wailsjs/go/models";
 
 // Mirrors guiapi.ServiceDNS. Typed locally so the read path doesn't depend on
 // the generated model namespace.
@@ -25,7 +33,15 @@ interface ServiceDNS {
   primary: boolean;
 }
 
-type View = "dns" | "hosts" | "settings";
+// Mirrors service.Profile (read path); writes use the generated service.Profile.
+interface ProfileInfo {
+  name: string;
+  description: string;
+  servers: string[];
+  dhcp: boolean;
+}
+
+type View = "dns" | "profiles" | "hosts" | "settings";
 type Theme = "light" | "dark" | "system";
 
 // --- Theme ---
@@ -119,6 +135,7 @@ app.innerHTML = `
   <aside class="sidebar">
     <div class="sidebar-title">dnsctl</div>
     <button class="nav-item" data-view="dns">DNS Status</button>
+    <button class="nav-item" data-view="profiles">Profiles</button>
     <button class="nav-item" data-view="hosts">Hosts</button>
     <div class="sidebar-spacer"></div>
     <button class="nav-item icon-item" data-view="settings" title="Settings">${GEAR_SVG}Settings</button>
@@ -136,40 +153,325 @@ function escapeHtml(s: string): string {
 function setView(view: View): void {
   navItems.forEach((n) => n.classList.toggle("active", n.dataset.view === view));
   if (view === "dns") void renderDNS();
+  else if (view === "profiles") void renderProfiles();
   else if (view === "hosts") void renderHosts();
   else renderSettings();
 }
 navItems.forEach((n) => n.addEventListener("click", () => setView(n.dataset.view as View)));
 
-// --- DNS Status (read-only) ---
+// --- DNS Status (editable) ---
+
+// Service currently in inline-edit mode ("" = none), so a re-render keeps the
+// open editor.
+let editingService = "";
 
 async function renderDNS(): Promise<void> {
   content.innerHTML = `<h1>DNS Status</h1><p class="subtitle">Loading…</p>`;
   try {
     const backend = await Backend();
     const rows = (await DNSStatus()) as unknown as ServiceDNS[];
-    const list = rows
-      .map(
-        (r) => `
-        <div class="row">
-          <span class="primary">${escapeHtml(r.service)}</span>
-          ${r.primary ? `<span class="badge active">Active</span>` : ``}
-          <span class="spacer"></span>
-          ${
-            r.dhcp
-              ? `<span class="badge">Automatic (DHCP)</span>`
-              : `<span class="secondary mono">${r.servers.map(escapeHtml).join(", ")}</span>`
-          }
-        </div>`
-      )
-      .join("");
     content.innerHTML = `
       <h1>DNS Status</h1>
-      <p class="subtitle">Read-only — current system resolver configuration via ${escapeHtml(backend)}</p>
-      <div class="card">${list || `<div class="empty">No network services found.</div>`}</div>`;
+      <p class="subtitle">Set each service's DNS servers via ${escapeHtml(backend)}</p>
+      <div class="toolbar">
+        <button class="btn" id="dns-flush">Flush DNS cache</button>
+      </div>
+      <p class="error" id="dns-error"></p>
+      <div class="card" id="dns-list"></div>`;
+    document.querySelector<HTMLButtonElement>("#dns-flush")!.addEventListener("click", async () => {
+      const errEl = document.querySelector<HTMLParagraphElement>("#dns-error")!;
+      errEl.textContent = "";
+      try {
+        await FlushDNS();
+        flashButton("#dns-flush", "Flushed ✓");
+      } catch (err) {
+        errEl.textContent = String(err);
+      }
+    });
+    renderDNSRows(rows);
   } catch (err) {
     content.innerHTML = `<h1>DNS Status</h1><p class="error">${escapeHtml(String(err))}</p>`;
   }
+}
+
+function renderDNSRows(rows: ServiceDNS[]): void {
+  const listEl = document.querySelector<HTMLDivElement>("#dns-list")!;
+  if (!rows.length) {
+    listEl.innerHTML = `<div class="empty">No network services found.</div>`;
+    return;
+  }
+  listEl.innerHTML = "";
+  for (const r of rows) {
+    listEl.appendChild(r.service === editingService ? dnsEditRow(r) : dnsViewRow(r));
+  }
+}
+
+function dnsViewRow(r: ServiceDNS): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `
+    <span class="primary">${escapeHtml(r.service)}</span>
+    ${r.primary ? `<span class="badge active">Active</span>` : ``}
+    <span class="spacer"></span>
+    ${
+      r.dhcp
+        ? `<span class="badge">Automatic (DHCP)</span>`
+        : `<span class="secondary mono">${r.servers.map(escapeHtml).join(", ")}</span>`
+    }`;
+  const edit = document.createElement("button");
+  edit.className = "btn";
+  edit.textContent = "Edit";
+  edit.addEventListener("click", () => {
+    editingService = r.service;
+    void reloadDNS();
+  });
+  row.appendChild(edit);
+  return row;
+}
+
+function dnsEditRow(r: ServiceDNS): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `
+    <span class="primary">${escapeHtml(r.service)}</span>
+    <span class="spacer"></span>
+    <input class="dns-servers" value="${escapeHtml(r.servers.join(", "))}" placeholder="1.1.1.1, 1.0.0.1" />`;
+  const input = row.querySelector<HTMLInputElement>(".dns-servers")!;
+
+  const save = document.createElement("button");
+  save.className = "btn primary";
+  save.textContent = "Save";
+  save.addEventListener("click", () => void applyServers(r.service, input.value));
+
+  const dhcp = document.createElement("button");
+  dhcp.className = "btn";
+  dhcp.textContent = "Use DHCP";
+  dhcp.addEventListener("click", () => void revertDHCP(r.service));
+
+  const cancel = document.createElement("button");
+  cancel.className = "btn";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => {
+    editingService = "";
+    void reloadDNS();
+  });
+
+  row.append(save, dhcp, cancel);
+  return row;
+}
+
+async function applyServers(svc: string, raw: string): Promise<void> {
+  const errEl = document.querySelector<HTMLParagraphElement>("#dns-error")!;
+  errEl.textContent = "";
+  const servers = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!servers.length) {
+    errEl.textContent = "Enter at least one server, or use DHCP.";
+    return;
+  }
+  try {
+    await SetDNS(svc, servers);
+    editingService = "";
+    await reloadDNS();
+  } catch (err) {
+    errEl.textContent = String(err);
+  }
+}
+
+async function revertDHCP(svc: string): Promise<void> {
+  const errEl = document.querySelector<HTMLParagraphElement>("#dns-error")!;
+  errEl.textContent = "";
+  try {
+    await ClearDNS(svc);
+    editingService = "";
+    await reloadDNS();
+  } catch (err) {
+    errEl.textContent = String(err);
+  }
+}
+
+// reloadDNS refreshes just the service rows (cheaper than a full re-render and
+// preserves the toolbar/error elements).
+async function reloadDNS(): Promise<void> {
+  const rows = (await DNSStatus()) as unknown as ServiceDNS[];
+  renderDNSRows(rows);
+}
+
+// flashButton briefly shows confirmation text on a button, then restores it.
+function flashButton(selector: string, text: string): void {
+  const btn = document.querySelector<HTMLButtonElement>(selector);
+  if (!btn) return;
+  const orig = btn.textContent;
+  btn.textContent = text;
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }, 1200);
+}
+
+// --- Profiles (editable) ---
+
+async function renderProfiles(): Promise<void> {
+  content.innerHTML = `<h1>Profiles</h1><p class="subtitle">Loading…</p>`;
+  let services: string[] = [];
+  try {
+    services = await ListServices();
+  } catch {
+    // No DNS backend: profiles can still be listed/edited, just not applied.
+  }
+  const serviceOptions = services.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+
+  content.innerHTML = `
+    <h1>Profiles</h1>
+    <p class="subtitle">Named DNS server sets you can apply to a network service</p>
+    <div class="toolbar">
+      <input id="p-name" placeholder="name (cloudflare)" />
+      <input id="p-servers" placeholder="servers (1.1.1.1, 1.0.0.1)" />
+      <input id="p-desc" placeholder="description (optional)" />
+      <label class="inline-check"><input type="checkbox" id="p-dhcp" /> DHCP</label>
+      <button class="btn primary" id="p-save">Add</button>
+    </div>
+    <p class="error" id="p-error"></p>
+    ${
+      services.length
+        ? `<div class="toolbar"><span class="secondary">Apply to:</span>
+             <select id="p-target">${serviceOptions}</select></div>`
+        : `<p class="subtitle">No DNS backend available — profiles can be edited but not applied.</p>`
+    }
+    <div class="card" id="p-list"></div>`;
+
+  const dhcpBox = document.querySelector<HTMLInputElement>("#p-dhcp")!;
+  const serversInput = document.querySelector<HTMLInputElement>("#p-servers")!;
+  dhcpBox.addEventListener("change", () => {
+    serversInput.disabled = dhcpBox.checked;
+    if (dhcpBox.checked) serversInput.value = "";
+  });
+  document.querySelector<HTMLButtonElement>("#p-save")!.addEventListener("click", () => void saveProfile());
+
+  await refreshProfiles(services.length > 0);
+}
+
+async function refreshProfiles(canApply: boolean): Promise<void> {
+  const listEl = document.querySelector<HTMLDivElement>("#p-list")!;
+  const profiles = (await ListProfiles()) as unknown as ProfileInfo[];
+  if (!profiles.length) {
+    listEl.innerHTML = `<div class="empty">No profiles yet. Add one above.</div>`;
+    return;
+  }
+  listEl.innerHTML = "";
+  for (const p of profiles) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const servers = p.dhcp ? "DHCP" : p.servers.join(", ");
+    row.innerHTML = `
+      <span class="primary">${escapeHtml(p.name)}</span>
+      <span class="secondary mono">${escapeHtml(servers)}</span>
+      ${p.description ? `<span class="badge">${escapeHtml(p.description)}</span>` : ``}
+      <span class="spacer"></span>`;
+
+    if (canApply) {
+      const apply = document.createElement("button");
+      apply.className = "btn primary";
+      apply.textContent = "Apply";
+      apply.addEventListener("click", () => void applyProfileToTarget(p.name));
+      row.appendChild(apply);
+    }
+
+    const edit = document.createElement("button");
+    edit.className = "btn";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => fillProfileForm(p));
+    row.appendChild(edit);
+
+    const del = document.createElement("button");
+    del.className = "btn danger";
+    del.textContent = "Remove";
+    del.addEventListener("click", async () => {
+      if (getConfirmRemove()) {
+        const ok = await confirmDialog("Remove profile", `Delete the profile "${p.name}"?`);
+        if (!ok) return;
+      }
+      await DeleteProfile(p.name);
+      await refreshProfiles(canApply);
+    });
+    row.appendChild(del);
+
+    listEl.appendChild(row);
+  }
+}
+
+function fillProfileForm(p: ProfileInfo): void {
+  document.querySelector<HTMLInputElement>("#p-name")!.value = p.name;
+  const serversInput = document.querySelector<HTMLInputElement>("#p-servers")!;
+  const dhcpBox = document.querySelector<HTMLInputElement>("#p-dhcp")!;
+  dhcpBox.checked = p.dhcp;
+  serversInput.disabled = p.dhcp;
+  serversInput.value = p.dhcp ? "" : p.servers.join(", ");
+  document.querySelector<HTMLInputElement>("#p-desc")!.value = p.description;
+  document.querySelector<HTMLButtonElement>("#p-save")!.textContent = "Save";
+}
+
+async function saveProfile(): Promise<void> {
+  const errEl = document.querySelector<HTMLParagraphElement>("#p-error")!;
+  errEl.textContent = "";
+  const name = document.querySelector<HTMLInputElement>("#p-name")!.value.trim();
+  const dhcp = document.querySelector<HTMLInputElement>("#p-dhcp")!.checked;
+  const servers = document
+    .querySelector<HTMLInputElement>("#p-servers")!
+    .value.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const description = document.querySelector<HTMLInputElement>("#p-desc")!.value.trim();
+
+  if (!name) {
+    errEl.textContent = "A profile name is required.";
+    return;
+  }
+  if (!dhcp && !servers.length) {
+    errEl.textContent = "Add at least one server, or check DHCP.";
+    return;
+  }
+  try {
+    await SaveProfile(new service.Profile({ name, description, servers, dhcp }));
+    // Reset the form.
+    document.querySelector<HTMLInputElement>("#p-name")!.value = "";
+    document.querySelector<HTMLInputElement>("#p-servers")!.value = "";
+    document.querySelector<HTMLInputElement>("#p-desc")!.value = "";
+    const dhcpBox = document.querySelector<HTMLInputElement>("#p-dhcp")!;
+    dhcpBox.checked = false;
+    document.querySelector<HTMLInputElement>("#p-servers")!.disabled = false;
+    document.querySelector<HTMLButtonElement>("#p-save")!.textContent = "Add";
+    await refreshProfiles(!!document.querySelector("#p-target"));
+  } catch (err) {
+    errEl.textContent = String(err);
+  }
+}
+
+async function applyProfileToTarget(name: string): Promise<void> {
+  const errEl = document.querySelector<HTMLParagraphElement>("#p-error")!;
+  errEl.textContent = "";
+  const target = document.querySelector<HTMLSelectElement>("#p-target");
+  const svc = target ? target.value : "";
+  try {
+    await ApplyProfile(name, svc);
+    errEl.textContent = "";
+    flashMessage(`Applied "${name}"${svc ? ` to ${svc}` : ""}.`);
+  } catch (err) {
+    errEl.textContent = String(err);
+  }
+}
+
+// flashMessage shows a transient success note in the profiles error slot
+// (reused as a status line).
+function flashMessage(text: string): void {
+  const errEl = document.querySelector<HTMLParagraphElement>("#p-error");
+  if (!errEl) return;
+  errEl.textContent = text;
+  errEl.classList.add("ok");
+  setTimeout(() => {
+    errEl.textContent = "";
+    errEl.classList.remove("ok");
+  }, 2000);
 }
 
 // --- Hosts (editable) ---

@@ -18,10 +18,14 @@ frontend (TypeScript)  ──Wails bindings──►  guiapi.App  ──►  ser
 
 A System Settings-style sidebar with:
 
-- **DNS Status** — read-only. One row per network service showing its current
-  DNS servers or "Automatic (DHCP)", with an "Active" badge on the
-  default-route service. Backed by `App.DNSStatus()`; dnsctl never modifies
-  resolver config here.
+- **DNS Status** — one row per network service showing its current DNS servers
+  or "Automatic (DHCP)", with an "Active" badge on the default-route service.
+  Editable inline: set servers (`App.SetDNS`), revert to DHCP (`App.ClearDNS`),
+  or flush the cache (`App.FlushDNS`). Backed by `App.DNSStatus()`.
+- **Profiles** — list / apply / create / edit / delete named DNS profiles.
+  Backed by `App.ListProfiles/ApplyProfile/SaveProfile/DeleteProfile`. Apply
+  switches the selected network service; create/edit/delete write the
+  user-owned config (`~/.config/dnsctl/config.yaml`, unprivileged).
 - **Hosts** — add / view / remove the dnsctl-managed `/etc/hosts` entries.
   Backed by `App.ListHosts/AddHost/RemoveHost`.
 - **Settings** (gear icon):

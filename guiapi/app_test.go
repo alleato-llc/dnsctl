@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/nycjv321/dnsctl/internal/config"
 	"github.com/nycjv321/dnsctl/internal/dns"
 	"github.com/nycjv321/dnsctl/internal/hosts"
 	"github.com/nycjv321/dnsctl/internal/service"
@@ -35,12 +36,21 @@ func (r *fakeRunner) SaveHosts(path string, content []byte) error {
 func newTestApp(t *testing.T) (*App, *fakeRunner) {
 	t.Helper()
 	runner := &fakeRunner{}
-	hostsPath := filepath.Join(t.TempDir(), "hosts")
+	dir := t.TempDir()
+	hostsPath := filepath.Join(dir, "hosts")
+	cfgPath := filepath.Join(dir, "config.yaml")
+	// Seed an empty config so profile tests start from a clean slate (a missing
+	// file would fall back to the built-in default profiles).
+	if err := (&config.Config{Version: 1, Profiles: map[string]config.Profile{}}).Save(cfgPath); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
 	mockDNS := dns.NewMockClient()
+	resolver := service.NewResolverService(mockDNS, runner)
 	app := New(
 		runner,
 		service.NewHostsService(hostsPath, runner),
-		service.NewResolverService(mockDNS, runner),
+		resolver,
+		service.NewProfileService(cfgPath, resolver),
 	)
 	return app, runner
 }
@@ -90,6 +100,7 @@ func TestApp_DNSStatus(t *testing.T) {
 		runner,
 		service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), runner),
 		service.NewResolverService(mockDNS, runner),
+		nil,
 	)
 
 	status, err := app.DNSStatus()
@@ -137,7 +148,7 @@ func TestApp_Backend(t *testing.T) {
 	}
 
 	r := &fakeRunner{}
-	hostsOnly := New(r, service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), r), nil)
+	hostsOnly := New(r, service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), r), nil, nil)
 	if got := hostsOnly.Backend(); got != "unavailable" {
 		t.Errorf("expected \"unavailable\" with no resolver, got %q", got)
 	}
@@ -146,7 +157,7 @@ func TestApp_Backend(t *testing.T) {
 func TestApp_ResolverUnavailable(t *testing.T) {
 	// hosts-only App: resolver nil, resolverErr set.
 	r := &fakeRunner{}
-	app := New(r, service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), r), nil)
+	app := New(r, service.NewHostsService(filepath.Join(t.TempDir(), "hosts"), r), nil, nil)
 	app.resolverErr = dns.ErrNoDNSBackend
 	if _, err := app.ListServices(); err == nil {
 		t.Error("expected error when resolver unavailable")
@@ -160,13 +171,40 @@ func TestApp_HelperStatus(t *testing.T) {
 	}
 }
 
+func TestApp_ProfileLifecycle(t *testing.T) {
+	app, runner := newTestApp(t)
+
+	if err := app.SaveProfile(service.Profile{Name: "cf", Description: "Cloudflare", Servers: []string{"1.1.1.1"}}); err != nil {
+		t.Fatalf("SaveProfile: %v", err)
+	}
+	list, err := app.ListProfiles()
+	if err != nil || len(list) != 1 || list[0].Name != "cf" {
+		t.Fatalf("ListProfiles got %+v err=%v", list, err)
+	}
+
+	if err := app.ApplyProfile("cf", "Wi-Fi"); err != nil {
+		t.Fatalf("ApplyProfile: %v", err)
+	}
+	if len(runner.setCalls) != 1 || runner.setCalls[0] != "Wi-Fi" {
+		t.Errorf("expected SetDNS on Wi-Fi, got %v", runner.setCalls)
+	}
+
+	if err := app.DeleteProfile("cf"); err != nil {
+		t.Fatalf("DeleteProfile: %v", err)
+	}
+	list, _ = app.ListProfiles()
+	if len(list) != 0 {
+		t.Errorf("expected no profiles after delete, got %d", len(list))
+	}
+}
+
 func TestApp_ListSystemHosts(t *testing.T) {
 	runner := &fakeRunner{}
 	path := filepath.Join(t.TempDir(), "hosts")
 	if err := os.WriteFile(path, []byte("127.0.0.1\tlocalhost\n255.255.255.255\tbroadcasthost\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	app := New(runner, service.NewHostsService(path, runner), nil)
+	app := New(runner, service.NewHostsService(path, runner), nil, nil)
 
 	// Add a managed entry; system entries must remain separate.
 	if err := app.AddHost(hosts.Entry{IP: "10.0.0.1", Hostname: "app.local"}); err != nil {

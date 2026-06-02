@@ -13,15 +13,29 @@ import (
 // real (temp) file and records DNS-side calls without needing root or a DNS
 // backend.
 type recordingRunner struct {
-	flushed   int
-	saveErr   error
-	lastWrite []byte
+	flushed    int
+	saveErr    error
+	lastWrite  []byte
+	setCalls   []SetDNSCall
+	clearCalls []string
 }
 
-func (r *recordingRunner) Ping() error                   { return nil }
-func (r *recordingRunner) SetDNS(string, []string) error { return nil }
-func (r *recordingRunner) ClearDNS(string) error         { return nil }
-func (r *recordingRunner) FlushDNS() error               { r.flushed++; return nil }
+// SetDNSCall records a recordingRunner SetDNS invocation.
+type SetDNSCall struct {
+	Service string
+	Servers []string
+}
+
+func (r *recordingRunner) Ping() error { return nil }
+func (r *recordingRunner) SetDNS(service string, servers []string) error {
+	r.setCalls = append(r.setCalls, SetDNSCall{Service: service, Servers: servers})
+	return nil
+}
+func (r *recordingRunner) ClearDNS(service string) error {
+	r.clearCalls = append(r.clearCalls, service)
+	return nil
+}
+func (r *recordingRunner) FlushDNS() error { r.flushed++; return nil }
 func (r *recordingRunner) SaveHosts(path string, content []byte) error {
 	if r.saveErr != nil {
 		return r.saveErr

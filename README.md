@@ -11,6 +11,7 @@ A Unix CLI tool with a TUI for switching between DNS server profiles.
 ## Features
 
 - **Named DNS profiles** - Define profiles like "home", "traveling", "work" with different DNS servers
+- **Headless profile control** - `dnsctl profile` subcommands to list/apply/add/remove profiles, with JSON output for scripts and agents
 - **TUI interface** - ncurses-style terminal UI using Bubble Tea
 - **Clear DNS** - Revert to DHCP defaults with a single keypress
 - **Multiple network services** - Switch between Wi-Fi, Ethernet, and other interfaces
@@ -20,6 +21,9 @@ A Unix CLI tool with a TUI for switching between DNS server profiles.
 - **Desktop GUI** - Optional [Wails](https://wails.io) (Go + TypeScript) frontend on the same core (see [Desktop GUI](#desktop-gui-wails))
 
 ## Installation
+
+For the full guide — CLI, privileged helper, and the desktop GUI (including
+building a DMG) — see [docs/INSTALL.md](docs/INSTALL.md).
 
 ### Build from source
 
@@ -129,6 +133,37 @@ Main Screen                    Profile Selection
 │ [q] Quit            │
 └─────────────────────┘
 ```
+
+## Managing DNS profiles
+
+The interactive TUI switches profiles, but the `dnsctl profile` subcommand does
+the same thing headlessly — for scripts, agents, and the GUI. Profiles live in
+the user config (`~/.config/dnsctl/config.yaml`) and map a name to a set of DNS
+servers (or DHCP).
+
+```bash
+dnsctl profile list                                 # list configured profiles
+dnsctl profile add cloudflare --server 1.1.1.1 --server 1.0.0.1 --description "Cloudflare"
+dnsctl profile add travel --dhcp --description "Use the network's DNS"
+dnsctl profile apply cloudflare                     # apply to the default/active service
+dnsctl profile apply cloudflare --service Ethernet  # apply to a specific service
+dnsctl profile rm travel                            # delete a profile definition
+```
+
+`list`, `add`, and `rm` only touch the user-owned config file and need no
+privileges. `apply` changes resolver config, which **requires root** — run it
+with `sudo` or install the [privileged helper](#privileged-helper-password-less-changes).
+With no `--service`, `apply` targets the config's `default_service`, then the
+active (default-route) service.
+
+| Flag | Commands | Description |
+|------|----------|-------------|
+| `--json` | all | Emit JSON instead of a table |
+| `--config PATH` | all | Operate on a different config file |
+| `--service NAME` | `apply` | Network service to apply to (default: config default, then active) |
+| `--server IP` | `add` | DNS server (repeatable) |
+| `--dhcp` | `add` | Profile reverts the service to DHCP-provided DNS |
+| `--description TEXT` | `add` | Human-readable description |
 
 ## Managing `/etc/hosts` entries
 
@@ -248,9 +283,12 @@ TUI, so all three share one core. The GUI is a **separate Go module** (its own
 
 It's a System Settings-style window with:
 
-- **DNS Status** — read-only. Lists each network service with its current DNS
-  servers (or "Automatic (DHCP)"), and marks the active/default-route service
-  with an "Active" badge. dnsctl reads but never changes this configuration.
+- **DNS Status** — lists each network service with its current DNS servers (or
+  "Automatic (DHCP)"), marks the active/default-route service with an "Active"
+  badge, and lets you edit each service inline: set specific servers, revert to
+  DHCP, or flush the DNS cache.
+- **Profiles** — list, apply, create, edit, and delete named DNS profiles. Apply
+  switches a chosen network service to the profile.
 - **Hosts** — add, view, and remove the dnsctl-managed `/etc/hosts` entries.
 - **Settings** (gear icon) — appearance (Light / Dark / System), font
   (System / Rounded / Mono, with live previews), a few host options ("show
@@ -305,6 +343,20 @@ wails dev
 cd gui
 wails build
 ```
+
+To produce a distributable `.app` and DMG, from the repo root:
+
+```bash
+make gui-build           # gui/build/bin/dnsctl-gui.app
+```
+```bash
+make gui-dmg             # gui/build/bin/dnsctl.dmg
+```
+
+`gui-dmg` uses `create-dmg` (drag-to-Applications layout) when installed, else
+`hdiutil`. The helper is **not** bundled — install it separately. See
+[docs/INSTALL.md](docs/INSTALL.md#3-desktop-gui-wails) for the full GUI build,
+DMG, local-install, and Gatekeeper notes.
 
 See [`gui/README.md`](gui/README.md) for architecture details and how to add
 new bound methods.
@@ -376,7 +428,8 @@ dnsctl/
 │   │   ├── main.go               #   Entry point (calls Execute)
 │   │   ├── root.go               #   Cobra root command; default action runs the TUI
 │   │   ├── runner.go             #   chooseRunner(): in-process if root, else helper
-│   │   └── hosts.go              #   `dnsctl hosts` subcommands
+│   │   ├── hosts.go              #   `dnsctl hosts` subcommands
+│   │   └── profile.go            #   `dnsctl profile` subcommands
 │   └── dnsctl-helper/            # Privileged root daemon
 │       ├── main.go               #   Serves privileged ops over a unix socket
 │       └── peercred_*.go         #   Peer-UID authorization (LOCAL_PEERCRED)
@@ -385,7 +438,7 @@ dnsctl/
 │   ├── dns/                     # networksetup wrapper + mock client
 │   ├── hosts/                   # /etc/hosts managed-block parser, CRUD, atomic write
 │   ├── ipc/                     # Helper request/response protocol
-│   ├── service/                 # Privilege-agnostic facade (Hosts/ResolverService)
+│   ├── service/                 # Privilege-agnostic facade (Hosts/Resolver/ProfileService)
 │   │                            #   + PrivilegedRunner: DirectRunner | HelperClient
 │   └── tui/                     # Bubble Tea TUI
 ├── guiapi/                      # GUI binding layer on the facade (testable, main module)

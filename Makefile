@@ -1,9 +1,14 @@
-.PHONY: build build-helper build-darwin build-linux build-all install uninstall install-helper uninstall-helper clean run test
+.PHONY: build build-helper build-darwin build-linux build-all install uninstall install-helper uninstall-helper gui-build gui-dmg clean run test
 
 BINARY_NAME=dnsctl
 HELPER_NAME=dnsctl-helper
 BUILD_DIR=bin
 INSTALL_DIR=/usr/local/bin
+
+# Wails desktop GUI (separate module under gui/).
+GUI_DIR=gui
+GUI_APP=$(GUI_DIR)/build/bin/dnsctl-gui.app
+GUI_DMG=$(GUI_DIR)/build/bin/dnsctl.dmg
 
 build: build-helper
 	@mkdir -p $(BUILD_DIR)
@@ -42,6 +47,24 @@ install-helper: build-helper
 
 uninstall-helper:
 	@sudo packaging/uninstall-helper.sh
+
+# Build the Wails GUI .app (needs the Wails CLI + npm; see docs/INSTALL.md).
+gui-build:
+	cd $(GUI_DIR) && wails build
+
+# Package the GUI .app into a DMG. Uses create-dmg (drag-to-Applications layout)
+# when available, otherwise falls back to the built-in hdiutil. The GUI still
+# needs the privileged helper installed separately (make install-helper) — it is
+# not bundled in the DMG.
+gui-dmg: gui-build
+	@rm -f $(GUI_DMG)
+	@if command -v create-dmg >/dev/null 2>&1; then \
+		create-dmg --volname "dnsctl" --app-drop-link 450 120 "$(GUI_DMG)" "$(GUI_APP)"; \
+	else \
+		echo "create-dmg not found (brew install create-dmg for a nicer installer); using hdiutil"; \
+		hdiutil create -volname "dnsctl" -srcfolder "$(GUI_APP)" -ov -format UDZO "$(GUI_DMG)"; \
+	fi
+	@echo "Built $(GUI_DMG)"
 
 clean:
 	@rm -rf $(BUILD_DIR)

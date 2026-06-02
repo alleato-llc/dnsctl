@@ -443,6 +443,35 @@ button.btn.destructive {
   font-size: 12px;
 }
 
+/* Same slot reused for a transient success message (e.g. "Applied …"). */
+.error.ok {
+  color: var(--accent);
+}
+
+/* Inline checkbox label (e.g. the DHCP option in the profile form). */
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+select {
+  font: inherit;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--separator);
+  background: var(--content-bg);
+  color: var(--text);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 .empty {
   color: var(--text-secondary);
   padding: 24px;

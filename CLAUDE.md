@@ -21,7 +21,8 @@ cmd/dnsctl/
 ├── main.go              # Entry point - calls Execute()
 ├── root.go              # Cobra root command; default (no subcommand) runs the TUI
 ├── runner.go            # chooseRunner(): DirectRunner if root, else HelperClient
-└── hosts.go             # `dnsctl hosts` subcommands (list/get/add/set/rm)
+├── hosts.go             # `dnsctl hosts` subcommands (list/get/add/set/rm)
+└── profile.go           # `dnsctl profile` subcommands (list/apply/add/rm)
 cmd/dnsctl-helper/
 ├── main.go              # Privileged root daemon; serves privileged ops over a unix socket
 ├── peercred_darwin.go   # Peer-UID lookup via LOCAL_PEERCRED (authorization)
@@ -46,9 +47,11 @@ internal/
 ├── service/            # Privilege-agnostic facade shared by CLI/TUI/GUI
 │   ├── hosts.go         # HostsService: orchestrates load/validate/mutate/persist
 │   ├── resolver.go      # ResolverService: resolver reads + privileged writes
+│   ├── profiles.go      # ProfileService: list/apply/edit named DNS profiles
 │   ├── privilege.go     # PrivilegedRunner interface + DirectRunner (in-process)
 │   ├── helper_client.go # HelperClient: forwards privileged ops to the helper over IPC
-│   └── hosts_test.go    # Service tests with a recording runner
+│   ├── hosts_test.go    # Service tests with a recording runner
+│   └── profiles_test.go # ProfileService tests
 └── tui/
     ├── app.go           # Bubble Tea Model with Init/Update/View
     ├── app_test.go      # TUI logic tests
@@ -79,27 +82,29 @@ Building the GUI needs the Wails CLI + npm (see `gui/README.md`); bindings under
 unprivileged, so `guiapi.NewApp` uses `HelperClient` — install the helper first
 (`make install-helper`).
 
-`App` methods are the frontend's binding surface: `ListHosts/AddHost/SetHost/
-RemoveHost` (editable), and read-only resolver methods `DNSStatus` (per-service
-config, flagging the active/default service), `Backend`, `ListServices`,
-`CurrentDNS`. The frontend (`gui/frontend/src/main.ts` + `style.css`) is a
-System-Settings-style sidebar with three views: **DNS Status** (read-only;
-shows each service's servers or "Automatic (DHCP)" and an "Active" badge on the
-default-route service — dnsctl never modifies resolver config here), **Hosts**
-(the managed-entry editor), and **Settings** (gear icon). Settings has:
-appearance (Light/Dark/System) and font (System/Rounded/Mono) — frontend-only
-prefs via `localStorage` + `data-theme`/`data-font`; host options ("show system
-entries" backed by `App.ListSystemHosts()`, "confirm before removing"); and a
-**helper status** row backed by `App.HelperStatus()` →
-`PrivilegedRunner.Ping()` (the helper answers `ipc.OpPing` after authorizing the
-peer). After adding an `App` method, re-run `wails generate module` to refresh
-the TypeScript bindings.
+`App` methods are the frontend's binding surface: hosts (`ListHosts/AddHost/
+SetHost/RemoveHost/ListSystemHosts`), resolver (`DNSStatus` per-service config
+flagging the active service, `Backend`, `ListServices`, `CurrentDNS`, and the
+write methods `SetDNS/ClearDNS/FlushDNS`), and profiles (`ListProfiles/
+ApplyProfile/SaveProfile/DeleteProfile`). The frontend (`gui/frontend/src/
+main.ts` + `style.css`) is a System-Settings-style sidebar with four views:
+**DNS Status** (each service's servers or "Automatic (DHCP)" with an "Active"
+badge on the default-route service; editable inline — set servers, revert to
+DHCP, flush cache), **Profiles** (list/apply/create/edit/delete named DNS
+profiles; apply switches the chosen service), **Hosts** (the managed-entry
+editor), and **Settings** (gear icon). Settings has: appearance
+(Light/Dark/System) and font (System/Rounded/Mono) — frontend-only prefs via
+`localStorage` + `data-theme`/`data-font`; host options ("show system entries"
+backed by `App.ListSystemHosts()`, "confirm before removing"); and a **helper
+status** row backed by `App.HelperStatus()` → `PrivilegedRunner.Ping()` (the
+helper answers `ipc.OpPing` after authorizing the peer). After adding an `App`
+method, re-run `wails generate module` to refresh the TypeScript bindings.
 
 ### Entry point / command layer
 
 The binary uses [Cobra](https://github.com/spf13/cobra). The root command's
 `RunE` launches the Bubble Tea TUI, so bare `dnsctl` behaves as it always has.
-Subcommands (currently `hosts`) provide headless, scriptable/LLM-friendly
+Subcommands (`hosts`, `profile`) provide headless, scriptable/LLM-friendly
 operations. New subcommands are added as files under `cmd/dnsctl/` that register
 themselves on `rootCmd` in an `init()`.
 
@@ -120,10 +125,12 @@ seam where privilege is acquired:
   privileged helper at `cmd/dnsctl-helper`, for the unprivileged GUI and a
   non-root CLI.
 
-Both the TUI (`ResolverService`) and the `hosts` CLI (`HostsService`) build on
-this seam. To add an operation: put orchestration in a `*Service` method, and if
-it has a root-only side effect, add it to `PrivilegedRunner` (and both
-implementations).
+The TUI and `profile` CLI use `ResolverService`/`ProfileService`; the `hosts`
+CLI uses `HostsService`; the GUI uses all three. `ProfileService` reads/edits
+the user-owned config unprivileged and only routes its `Apply` (a resolver
+write) through the seam. To add an operation: put orchestration in a `*Service`
+method, and if it has a root-only side effect, add it to `PrivilegedRunner` (and
+both implementations).
 
 ### Privileged helper (`cmd/dnsctl-helper`)
 
