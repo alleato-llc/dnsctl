@@ -1,3 +1,10 @@
+//go:build darwin
+
+// These tests drive the helper's full IPC round-trip, which authorizes callers
+// via the macOS LOCAL_PEERCRED peer-UID check (peercred_darwin.go). That
+// capability is macOS-only — the peercred_other.go stub rejects every peer — so
+// the suite is gated to darwin. On other platforms (e.g. Linux CI) the helper
+// package simply has no test files.
 package main
 
 import (
