@@ -8,7 +8,7 @@ This file provides context for Claude Code when working on this project.
 
 ## Tech Stack
 
-- **Language**: Go 1.21+
+- **Language**: Go 1.24+
 - **TUI Framework**: Bubble Tea (github.com/charmbracelet/bubbletea)
 - **Styling**: Lip Gloss (github.com/charmbracelet/lipgloss)
 - **Config**: YAML via gopkg.in/yaml.v3

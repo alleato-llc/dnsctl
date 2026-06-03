@@ -1,484 +1,107 @@
 # dnsctl
 
-[![CI](https://github.com/nycjv321/dnsctl/actions/workflows/ci.yml/badge.svg)](https://github.com/nycjv321/dnsctl/actions/workflows/ci.yml)
-[![GitHub Release](https://img.shields.io/github/v/release/nycjv321/dnsctl)](https://github.com/nycjv321/dnsctl/releases)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/nycjv321/dnsctl)](go.mod)
-[![License](https://img.shields.io/github/license/nycjv321/dnsctl)](LICENSE)
+[![CI](https://github.com/alleato-llc/dnsctl/actions/workflows/ci.yml/badge.svg)](https://github.com/alleato-llc/dnsctl/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/alleato-llc/dnsctl)](https://github.com/alleato-llc/dnsctl/releases)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/alleato-llc/dnsctl)](go.mod)
+[![License](https://img.shields.io/github/license/alleato-llc/dnsctl)](LICENSE)
 [![Built with Claude](https://img.shields.io/badge/Built%20with-Claude-blueviolet)](https://claude.ai)
 
-A Unix CLI tool with a TUI for switching between DNS server profiles.
+Switch between DNS server profiles on macOS — from a terminal UI, headless CLI
+subcommands, or a desktop app, all on one shared core.
 
-## Features
+## Overview
 
-- **Named DNS profiles** - Define profiles like "home", "traveling", "work" with different DNS servers
-- **Headless profile control** - `dnsctl profile` subcommands to list/apply/add/remove profiles, with JSON output for scripts and agents
-- **TUI interface** - ncurses-style terminal UI using Bubble Tea
-- **Clear DNS** - Revert to DHCP defaults with a single keypress
-- **Multiple network services** - Switch between Wi-Fi, Ethernet, and other interfaces
-- **DNS cache flushing** - Automatically flush DNS cache after changes
-- **`/etc/hosts` management** - Headless `dnsctl hosts` subcommands to list/add/update/remove local hostname mappings, with JSON output for scripts and agents
-- **Privileged helper** - Optional root daemon for password-less DNS/hosts changes without `sudo`
-- **Desktop GUI** - Optional [Wails](https://wails.io) (Go + TypeScript) frontend on the same core (see [Desktop GUI](#desktop-gui-wails))
+dnsctl wraps the macOS networking tools (`networksetup`, `dscacheutil`) behind a
+friendlier interface. Define named **profiles** ("home", "work", "traveling")
+and switch your active DNS with a keypress, a one-liner, or a click. It also
+manages your `/etc/hosts` entries and can run a small root **helper** so changes
+don't need `sudo` each time.
 
-## Installation
+Three frontends, one behavior:
 
-For the full guide — CLI, privileged helper, and the desktop GUI (including
-building a DMG) — see [docs/INSTALL.md](docs/INSTALL.md).
+- **TUI** — an interactive terminal UI ([details](docs/TUI.md))
+- **CLI** — scriptable `profile` and `hosts` subcommands with JSON output ([details](docs/CLI.md))
+- **GUI** — an optional [Wails](https://wails.io) desktop app ([details](gui/README.md))
 
-### Build from source
+## Quick start
+
+Install (build from source — see [docs/INSTALL.md](docs/INSTALL.md) for the full
+guide, including the helper and GUI):
 
 ```bash
-# Clone the repository
-git clone https://github.com/nycjv321/dnsctl.git
+git clone https://github.com/alleato-llc/dnsctl.git
 cd dnsctl
-
-# Build
 make build
-
-# Install to /usr/local/bin (requires sudo)
-make install
+make install        # to /usr/local/bin (requires sudo)
+make config         # seed ~/.config/dnsctl/config.yaml
 ```
 
-### Quick start
-
-```bash
-# Create config from example
-make config
-
-# Run the tool
-make run
-# or
-./bin/dnsctl
-```
-
-## Configuration
-
-Configuration is stored at `~/.config/dnsctl/config.yaml`:
-
-```yaml
-version: 1
-default_service: "Wi-Fi"
-
-profiles:
-  home:
-    description: "Home network with Pi-hole"
-    servers: ["192.168.1.100", "1.1.1.1"]
-  traveling:
-    description: "Use network's DNS (DHCP)"
-    dhcp: true  # Clears DNS settings to use DHCP
-  cloudflare:
-    description: "Cloudflare DNS"
-    servers: ["1.1.1.1", "1.0.0.1"]
-  google:
-    description: "Google Public DNS"
-    servers: ["8.8.8.8", "8.8.4.4"]
-
-settings:
-  flush_cache: true
-```
-
-### Profile Options
-
-Each profile supports these fields:
-
-| Field | Description |
-|-------|-------------|
-| `description` | Human-readable description shown in the TUI |
-| `servers` | List of DNS server IP addresses |
-| `dhcp` | Set to `true` to clear DNS and use DHCP (automatic) |
-
-Use `dhcp: true` for profiles where you want to use the network's default DNS (useful when traveling or on networks with captive portals).
-
-## Usage
-
-Launch the TUI:
+### TUI
 
 ```bash
 dnsctl
 ```
 
-### Keybindings
+`p` switches profile, `c` clears DNS (DHCP), `s` changes service, `q` quits.
+Full keybindings and layout in [docs/TUI.md](docs/TUI.md).
 
-#### Main Screen
-
-| Key | Action |
-|-----|--------|
-| `p` | Switch DNS profile |
-| `c` | Clear DNS (use DHCP) |
-| `s` | Change network service |
-| `r` | Refresh status |
-| `q` | Quit |
-
-#### List Views
-
-| Key | Action |
-|-----|--------|
-| `↑` / `k` | Move up |
-| `↓` / `j` | Move down |
-| `Enter` | Select |
-| `Esc` | Go back |
-| `q` | Quit |
-
-### TUI Layout
-
-```
-Main Screen                    Profile Selection
-┌─────────────────────┐       ┌─────────────────────┐
-│ Current: Wi-Fi      │  [p]  │ > home              │
-│ DNS: 1.1.1.1        │ ───── │   traveling         │
-│                     │       │   cloudflare        │
-│ [p] Switch Profile  │       │                     │
-│ [c] Clear DNS       │       │ Servers: 192.168... │
-│ [s] Change Service  │       └─────────────────────┘
-│ [q] Quit            │
-└─────────────────────┘
-```
-
-## Managing DNS profiles
-
-The interactive TUI switches profiles, but the `dnsctl profile` subcommand does
-the same thing headlessly — for scripts, agents, and the GUI. Profiles live in
-the user config (`~/.config/dnsctl/config.yaml`) and map a name to a set of DNS
-servers (or DHCP).
+### CLI
 
 ```bash
-dnsctl profile list                                 # list configured profiles
-dnsctl profile add cloudflare --server 1.1.1.1 --server 1.0.0.1 --description "Cloudflare"
-dnsctl profile add travel --dhcp --description "Use the network's DNS"
-dnsctl profile apply cloudflare                     # apply to the default/active service
-dnsctl profile apply cloudflare --service Ethernet  # apply to a specific service
-dnsctl profile rm travel                            # delete a profile definition
+dnsctl profile list                                 # list profiles
+sudo dnsctl profile apply cloudflare                # apply (resolver write needs root)
+dnsctl hosts set myapp.local 127.0.0.1 --dry-run    # preview a hosts edit
 ```
 
-`list`, `add`, and `rm` only touch the user-owned config file and need no
-privileges. `apply` changes resolver config, which **requires root** — run it
-with `sudo` or install the [privileged helper](#privileged-helper-password-less-changes).
-With no `--service`, `apply` targets the config's `default_service`, then the
-active (default-route) service.
+Reads are unprivileged; writes need root (`sudo`, or the helper). Full command
+and flag reference in [docs/CLI.md](docs/CLI.md).
 
-| Flag | Commands | Description |
-|------|----------|-------------|
-| `--json` | all | Emit JSON instead of a table |
-| `--config PATH` | all | Operate on a different config file |
-| `--service NAME` | `apply` | Network service to apply to (default: config default, then active) |
-| `--server IP` | `add` | DNS server (repeatable) |
-| `--dhcp` | `add` | Profile reverts the service to DHCP-provided DNS |
-| `--description TEXT` | `add` | Human-readable description |
+### GUI
 
-## Managing `/etc/hosts` entries
-
-The `dnsctl hosts` subcommand manages local hostname mappings (e.g. pointing
-`myapp.local` at `127.0.0.1`) from the command line — handy for scripts and
-LLM/agent invocation where the interactive TUI isn't appropriate.
-
-dnsctl only ever edits its own **managed block**, delimited by sentinel
-comments. Everything outside that block — `localhost`, `broadcasthost`, and any
-lines you added by hand — is preserved exactly:
-
-```
-# BEGIN dnsctl (managed by `dnsctl hosts` — do not edit by hand)
-127.0.0.1	myapp.local	# dev box
-10.0.0.5	staging.api api2.local
-# END dnsctl
-```
-
-### Commands
+A System Settings-style desktop app (DNS Status, Profiles, Hosts, Settings).
+It runs unprivileged and forwards changes to the helper, so install that first:
 
 ```bash
-dnsctl hosts list                                   # list managed entries
-dnsctl hosts get myapp.local                        # show one entry
-dnsctl hosts add myapp.local 127.0.0.1              # add (fails if it exists)
-dnsctl hosts set myapp.local 127.0.0.1              # add or update (idempotent)
-dnsctl hosts rm  myapp.local                        # remove an entry
+make build && sudo make install-helper
+cd gui && wails build       # -> gui/build/bin/dnsctl-gui.app
 ```
 
-Writing `/etc/hosts` requires root, so run the mutating commands with `sudo`:
+Prerequisites, `wails generate module`, and building a DMG (`make gui-dmg`) are
+covered in [docs/INSTALL.md](docs/INSTALL.md#3-desktop-gui-wails); the app's
+architecture in [gui/README.md](gui/README.md).
 
-```bash
-sudo dnsctl hosts add staging.api 10.0.0.5 --alias api2.local --comment "staging"
-```
+## Password-less changes (optional)
 
-### Flags
-
-| Flag | Commands | Description |
-|------|----------|-------------|
-| `--json` | `list`, `get` | Emit JSON instead of a table |
-| `--file PATH` | all | Operate on a different file (default `/etc/hosts`) |
-| `--alias NAME` | `add`, `set` | Additional hostname for the same IP (repeatable) |
-| `--comment TEXT` | `add`, `set` | Trailing comment for the entry |
-| `--dry-run` | `add`, `set`, `rm` | Print the resulting file without writing |
-| `--flush` | `add`, `set`, `rm` | Flush the DNS cache after writing |
-
-Reads (`list`/`get`) don't need elevated privileges; only writes do. Before each
-write the current file is backed up to `<path>.dnsctl.bak`, and the new content
-is written atomically (temp file + rename) so an interrupted run can't corrupt
-`/etc/hosts`.
-
-## Privileged helper (password-less changes)
-
-Changing DNS settings and writing `/etc/hosts` require root. The CLI can just be
-run with `sudo`, but the **GUI cannot elevate itself** — so for the GUI (and for
-a password-less CLI) you install the **dnsctl-helper**: a small root LaunchDaemon
-that performs the privileged work on your behalf.
-
-### Workflow
-
-**1. Install once (the only time you enter a password):**
+Changing DNS and writing `/etc/hosts` need root. The CLI can use `sudo`, but the
+GUI can't elevate itself — so install the **dnsctl-helper**, a root LaunchDaemon
+that performs the privileged work for you after a one-time install:
 
 ```bash
 make build-helper
-```
-```bash
-sudo make install-helper
+sudo make install-helper      # the only time you enter a password
 ```
 
-This registers the helper as a root LaunchDaemon (launchd starts it and keeps it
-running across reboots) and authorizes *your* user. To remove it later:
+How it's authorized and the security tradeoffs are described in
+[docs/DESIGN.md](docs/DESIGN.md#the-privileged-helper-trust-boundary);
+install/uninstall steps in [docs/INSTALL.md](docs/INSTALL.md).
 
-```bash
-sudo make uninstall-helper
-```
+## Documentation
 
-**2. After that, run dnsctl or the GUI as your normal (non-root) user.** Writes
-are forwarded to the already-running helper and applied without a password
-prompt. You never run the GUI with `sudo`.
-
-### How privileged operations are routed
-
-| How you run it | Mechanism | Helper required? | Password? |
-|----------------|-----------|------------------|-----------|
-| GUI (always non-root) | forwarded to the helper | **Yes** (writes fail without it) | No, after install |
-| `dnsctl …` (non-root) | forwarded to the helper | Yes, for writes | No, after install |
-| `sudo dnsctl …` | performed in-process | No | Yes, per `sudo` |
-
-Reads (`hosts list`/`get`, DNS status) are unprivileged and never touch the
-helper. If a write is attempted unprivileged with no helper installed, you get a
-clear connection error.
-
-### Security model
-
-The helper is the trust boundary. The socket
-(`/var/run/dnsctl-helper.sock`) is world-connectable; access is gated by a
-**peer-UID check** (`LOCAL_PEERCRED`) — only root and the UID authorized at
-install time may drive it. The helper restricts hosts writes to `/etc/hosts`,
-validates DNS server IPs, and re-parses/validates hosts content before writing.
-Set `DNSCTL_HELPER_SOCKET` to point a client at a non-default socket.
-
-> **Tradeoff:** once installed, *any* process running as your user can change DNS
-> and `/etc/hosts` (via the root helper) **without a password**. This is the
-> deliberate cost of password-less convenience. If you'd rather authenticate per
-> change, skip the helper and use `sudo dnsctl …` (CLI only).
-
-> Note: for source/Homebrew installs the helper runs unsigned, which is fine
-> locally. Distributing a notarized app would additionally require code-signing
-> the helper (and, for a bundled GUI, registering it via `SMAppService`).
-
-## Desktop GUI (Wails)
-
-An optional desktop GUI lives in [`gui/`](gui/), built with
-[Wails](https://wails.io) (Go backend, TypeScript frontend). It binds
-`guiapi.App`, which sits on the same `internal/service` facade as the CLI and
-TUI, so all three share one core. The GUI is a **separate Go module** (its own
-`go.mod`) so the Wails/CGo dependency tree stays out of the main build.
-
-It's a System Settings-style window with:
-
-- **DNS Status** — lists each network service with its current DNS servers (or
-  "Automatic (DHCP)"), marks the active/default-route service with an "Active"
-  badge, and lets you edit each service inline: set specific servers, revert to
-  DHCP, or flush the DNS cache.
-- **Profiles** — list, apply, create, edit, and delete named DNS profiles. Apply
-  switches a chosen network service to the profile.
-- **Hosts** — add, view, and remove the dnsctl-managed `/etc/hosts` entries.
-- **Settings** (gear icon) — appearance (Light / Dark / System), font
-  (System / Rounded / Mono, with live previews), a few host options ("show
-  read-only system entries", "confirm before removing"), and a **helper
-  status** indicator that tells you if `dnsctl-helper` is reachable (and how to
-  install it if not). Preferences are remembered between launches.
-
-### Prerequisites
-
-- Go 1.24+ and Node.js + npm
-- The Wails v2 CLI — install it, then verify system dependencies with
-  `wails doctor`:
-  ```bash
-  go install github.com/wailsapp/wails/v2/cmd/wails@latest
-  wails doctor
-  ```
-  `go install` places the binary in Go's bin directory (`$(go env GOPATH)/bin`,
-  typically `~/go/bin`). If `wails doctor` reports `command not found`, that
-  directory isn't on your `PATH`. Add it (zsh):
-  ```bash
-  echo 'export PATH="$PATH:$HOME/go/bin"' >> ~/.zshrc
-  source ~/.zshrc
-  ```
-- The privileged helper, since the GUI runs unprivileged and forwards changes
-  to it:
-  ```bash
-  make build && make install-helper
-  ```
-
-### First-time setup
-
-Resolve the Wails dependency tree, then generate the TypeScript bindings for
-`guiapi.App` into `frontend/wailsjs/`:
-
-```bash
-cd gui
-go mod tidy
-wails generate module
-```
-
-### Run / build
-
-`wails dev` runs a hot-reloading development build; `wails build` produces a
-production app at `gui/build/bin/dnsctl-gui.app`:
-
-```bash
-cd gui
-wails dev
-```
-
-```bash
-cd gui
-wails build
-```
-
-To produce a distributable `.app` and DMG, from the repo root:
-
-```bash
-make gui-build           # gui/build/bin/dnsctl-gui.app
-```
-```bash
-make gui-dmg             # gui/build/bin/dnsctl.dmg
-```
-
-`gui-dmg` uses `create-dmg` (drag-to-Applications layout) when installed, else
-`hdiutil`. The helper is **not** bundled — install it separately. See
-[docs/INSTALL.md](docs/INSTALL.md#3-desktop-gui-wails) for the full GUI build,
-DMG, local-install, and Gatekeeper notes.
-
-See [`gui/README.md`](gui/README.md) for architecture details and how to add
-new bound methods.
-
-> Tip: copy commands without the surrounding comments. In an interactive zsh
-> shell, `#` is not treated as a comment by default, so a pasted
-> `go mod tidy   # ...` runs with the comment as arguments and fails.
-
-## Permissions
-
-Changing DNS settings on macOS requires appropriate permissions. You may need to:
-
-1. Run with `sudo`:
-   ```bash
-   sudo dnsctl
-   ```
-
-2. Or grant your terminal Full Disk Access in **System Preferences > Privacy & Security > Full Disk Access**
-
-3. Or install the [privileged helper](#privileged-helper-password-less-changes)
-   for password-less changes without `sudo`.
-
-## How It Works
-
-dnsctl uses macOS `networksetup` commands under the hood:
-
-```bash
-networksetup -listallnetworkservices          # List services
-networksetup -getdnsservers Wi-Fi             # Get current DNS
-networksetup -setdnsservers Wi-Fi 1.1.1.1     # Set DNS
-networksetup -setdnsservers Wi-Fi empty       # Clear (use DHCP)
-dscacheutil -flushcache                       # Flush DNS cache
-```
-
-## Testing
-
-Run the test suite:
-
-```bash
-make test              # Run all tests
-go test -v ./...       # Verbose output
-go test -cover ./...   # With coverage report
-
-# View coverage in browser
-go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
-```
-
-The project has comprehensive test coverage:
-- **Config tests** - Config loading, parsing, defaults, and profile helpers
-- **TUI tests** - Model initialization, message handling, key navigation, DNS operations
-- **View tests** - Rendering output for all views
-
-Tests use a mock DNS client (`internal/dns/mock.go`) to avoid requiring system access.
-
-## Dependencies
-
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
-- [Lip Gloss](https://github.com/charmbracelet/lipgloss) - Styling
-- [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
-- [Cobra](https://github.com/spf13/cobra) - CLI commands and flag parsing
-- [yaml.v3](https://gopkg.in/yaml.v3) - YAML parsing
-
-## Project Structure
-
-```
-dnsctl/
-├── cmd/
-│   ├── dnsctl/                   # Main binary: CLI + TUI
-│   │   ├── main.go               #   Entry point (calls Execute)
-│   │   ├── root.go               #   Cobra root command; default action runs the TUI
-│   │   ├── runner.go             #   chooseRunner(): in-process if root, else helper
-│   │   ├── hosts.go              #   `dnsctl hosts` subcommands
-│   │   └── profile.go            #   `dnsctl profile` subcommands
-│   └── dnsctl-helper/            # Privileged root daemon
-│       ├── main.go               #   Serves privileged ops over a unix socket
-│       └── peercred_*.go         #   Peer-UID authorization (LOCAL_PEERCRED)
-├── internal/
-│   ├── config/                  # YAML config loading
-│   ├── dns/                     # networksetup wrapper + mock client
-│   ├── hosts/                   # /etc/hosts managed-block parser, CRUD, atomic write
-│   ├── ipc/                     # Helper request/response protocol
-│   ├── service/                 # Privilege-agnostic facade (Hosts/Resolver/ProfileService)
-│   │                            #   + PrivilegedRunner: DirectRunner | HelperClient
-│   └── tui/                     # Bubble Tea TUI
-├── guiapi/                      # GUI binding layer on the facade (testable, main module)
-├── gui/                         # Wails desktop app — SEPARATE go.mod
-│   ├── main.go                   #   Wails bootstrap, binds guiapi.App
-│   ├── wails.json                #   Wails project config
-│   └── frontend/                 #   TypeScript frontend
-├── packaging/                   # LaunchDaemon plist + helper install/uninstall scripts
-├── go.mod
-├── Makefile
-└── config.example.yaml
-```
+| Doc | What's in it |
+|-----|--------------|
+| [docs/INSTALL.md](docs/INSTALL.md) | Full install guide — CLI, helper, GUI, DMG |
+| [docs/CLI.md](docs/CLI.md) | `profile` and `hosts` command + flag reference, config format |
+| [docs/TUI.md](docs/TUI.md) | TUI keybindings and layout |
+| [gui/README.md](gui/README.md) | GUI architecture and bound methods |
+| [docs/DESIGN.md](docs/DESIGN.md) | Architecture: the service facade, privilege seam, helper |
+| [docs/STRUCTURE.md](docs/STRUCTURE.md) | Repository layout |
+| [docs/RELEASE.md](docs/RELEASE.md) | Release process and commit conventions |
 
 ## Contributing
 
-This project uses [Conventional Commits](https://www.conventionalcommits.org/) for commit messages, enabling automated releases and changelog generation.
-
-### Commit Format
-
-```
-<type>: <description>
-```
-
-### Common Types
-
-| Type | Description | Example |
-|------|-------------|---------|
-| `feat` | New feature | `feat: add quad9 DNS profile` |
-| `fix` | Bug fix | `fix: resolve DNS cache flush on Linux` |
-| `docs` | Documentation | `docs: update installation instructions` |
-| `refactor` | Code refactoring | `refactor: simplify profile loading` |
-| `test` | Adding tests | `test: add TUI navigation tests` |
-| `chore` | Maintenance | `chore: update dependencies` |
-
-### Breaking Changes
-
-Add `!` after the type for breaking changes:
-```bash
-feat!: change config file format
-```
+This project uses [Conventional Commits](https://www.conventionalcommits.org/)
+to drive automated releases — e.g. `feat: add quad9 profile`, `fix: …`,
+`docs: …`. Details and the release flow are in [docs/RELEASE.md](docs/RELEASE.md).
 
 ## License
 

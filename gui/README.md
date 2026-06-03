@@ -56,7 +56,7 @@ sudo make install-helper
 ```
 
 You enter a password once at install; afterwards the GUI applies changes
-password-less. See the main [README](../README.md#privileged-helper-password-less-changes)
+password-less. See the [design notes](../docs/DESIGN.md#the-privileged-helper-trust-boundary)
 for the routing table and security tradeoff.
 
 This module has its own `go.mod` (with `replace github.com/nycjv321/dnsctl =>

@@ -55,8 +55,9 @@ the installing user. Remove it with:
 sudo make uninstall-helper
 ```
 
-See the [README security model](../README.md#security-model) for how the helper
-authorizes callers (peer-UID over a unix socket) and re-validates every request.
+See the [design notes](DESIGN.md#the-privileged-helper-trust-boundary) for how
+the helper authorizes callers (peer-UID over a unix socket) and re-validates
+every request.
 
 ## 3. Desktop GUI (Wails)
 
